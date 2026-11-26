@@ -1,23 +1,22 @@
 package com.devsstream.cafepos.core.pricing
 
+import com.devsstream.cafepos.core.americanoY
 import com.devsstream.cafepos.core.appendixA
 import com.devsstream.cafepos.core.bdt
+import com.devsstream.cafepos.core.brownie
 import com.devsstream.cafepos.core.catalog.OrderDiscount
+import com.devsstream.cafepos.core.croissant
 import com.devsstream.cafepos.core.dhakaTime
+import com.devsstream.cafepos.core.icedTeaZ
+import com.devsstream.cafepos.core.latteX
 import com.devsstream.cafepos.core.order.ItemSelection
+import com.devsstream.cafepos.core.tc06Lines
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PriceOrderTest {
 
-    private val latteX = ItemSelection("latte", "large", mapOf("oat" to 1, "extra_shot" to 1, "vanilla" to 1))
-    private val americanoY = ItemSelection("americano", "regular", mapOf("extra_shot" to 2, "caramel" to 1))
-    private val icedTeaZ = ItemSelection("iced_tea", "large", mapOf("vanilla" to 1))
-    private val croissant = ItemSelection("croissant")
-    private val brownie = ItemSelection("brownie")
-
-    private val tc06Lines = listOf(OrderLine(latteX, 2), OrderLine(croissant, 2), OrderLine(brownie, 2))
     private val nov20at1530 = dhakaTime(2026, 11, 20, 15, 30)
 
     private fun unitPrice(selection: ItemSelection) =
