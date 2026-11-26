@@ -1,5 +1,6 @@
 package com.devsstream.cafepos.data.remote.fake
 
+import com.devsstream.cafepos.MemoryServerStore
 import com.devsstream.cafepos.core.appendixA
 import com.devsstream.cafepos.core.dhakaTime
 import com.devsstream.cafepos.data.remote.HttpException
@@ -21,15 +22,7 @@ import kotlin.random.Random
 
 class FakePosServerTest {
 
-    private class MemoryStore : FakeServerStore {
-        var saved: ServerState? = null
-        override fun load() = saved
-        override fun save(state: ServerState) {
-            saved = state
-        }
-    }
-
-    private val store = MemoryStore()
+    private val store = MemoryServerStore()
 
     // fake phone clocks we can move by hand
     private var elapsed = 5_000_000L
