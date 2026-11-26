@@ -9,6 +9,8 @@ import com.devsstream.cafepos.data.remote.ClockSyncingApi
 import com.devsstream.cafepos.data.remote.PosApi
 import com.devsstream.cafepos.data.remote.fake.FakePosServer
 import com.devsstream.cafepos.data.remote.fake.FileServerStore
+import com.devsstream.cafepos.data.sync.SyncScheduler
+import com.devsstream.cafepos.data.sync.WorkManagerSyncScheduler
 import com.devsstream.cafepos.payment.CardTerminal
 import com.devsstream.cafepos.time.PrefsAnchorStore
 import com.devsstream.cafepos.time.ServerClock
@@ -55,6 +57,10 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): PosDatabase =
         Room.databaseBuilder(context, PosDatabase::class.java, "pos.db").build()
+
+    @Provides
+    @Singleton
+    fun syncScheduler(@ApplicationContext context: Context): SyncScheduler = WorkManagerSyncScheduler(context)
 
     @Provides
     @Singleton
