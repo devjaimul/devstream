@@ -18,6 +18,7 @@ import com.devsstream.cafepos.ui.menu.ItemScreen
 import com.devsstream.cafepos.ui.menu.MenuScreen
 import com.devsstream.cafepos.ui.order.OrderScreen
 import com.devsstream.cafepos.ui.orders.OrdersScreen
+import com.devsstream.cafepos.ui.summary.SummaryScreen
 
 @Composable
 fun PosNavHost() {
@@ -37,6 +38,7 @@ fun PosNavHost() {
                 onProduct = { nav.navigate("item/$it") },
                 onCart = { nav.navigate("cart") },
                 onOrders = { nav.navigate("orders") },
+                onSummary = { nav.navigate("summary") },
                 onDebug = { nav.navigate("debug") },
             )
         }
@@ -68,6 +70,9 @@ fun PosNavHost() {
         }
         composable("orders") {
             OrdersScreen(status = status, onOpen = { nav.navigate("order/$it") }, onBack = back)
+        }
+        composable("summary") {
+            SummaryScreen(status = status, onBack = back)
         }
         composable("debug") {
             DebugScreen(status = status, onBack = back)

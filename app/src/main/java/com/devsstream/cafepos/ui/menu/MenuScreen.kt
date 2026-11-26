@@ -31,6 +31,7 @@ fun MenuScreen(
     onProduct: (String) -> Unit,
     onCart: () -> Unit,
     onOrders: () -> Unit,
+    onSummary: () -> Unit,
     onDebug: () -> Unit,
 ) {
     PosScaffold(
@@ -38,6 +39,7 @@ fun MenuScreen(
         status = status,
         actions = {
             TextButton(onClick = onOrders) { Text("Orders") }
+            TextButton(onClick = onSummary) { Text("Summary") }
             TextButton(onClick = onDebug) { Text("Debug") }
         },
         bottomBar = { if (ui.cart.lines.isNotEmpty()) CartBar(ui, onCart) },
