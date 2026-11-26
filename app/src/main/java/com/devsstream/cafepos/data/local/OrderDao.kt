@@ -49,6 +49,10 @@ interface OrderDao {
     suspend fun withStatus(status: OrderStatus): List<OrderWithDetails>
 
     @Transaction
+    @Query("SELECT * FROM orders WHERE status = :status ORDER BY id LIMIT 1")
+    suspend fun firstWithStatus(status: OrderStatus): OrderWithDetails?
+
+    @Transaction
     @Query("SELECT * FROM orders WHERE id = :id")
     fun observe(id: Long): Flow<OrderWithDetails?>
 

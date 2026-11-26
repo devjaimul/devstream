@@ -9,6 +9,8 @@ data class OrderDto(
     val receiptNo: String,
     val createdAt: String,
     val businessDay: String,
+    // false if the till had to guess the time after a reboot (D1)
+    val timeConfirmed: Boolean = true,
     val catalogVersion: Int,
     val coupon: String? = null,
     val lines: List<OrderLineDto>,

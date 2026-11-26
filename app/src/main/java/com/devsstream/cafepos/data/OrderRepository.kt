@@ -135,6 +135,8 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
     // paid but not on the server yet, oldest first
     suspend fun ordersToSync(): List<OrderWithDetails> = dao.withStatus(OrderStatus.PENDING)
 
+    suspend fun nextToSync(): OrderWithDetails? = dao.firstWithStatus(OrderStatus.PENDING)
+
     suspend fun markSynced(orderId: Long, serverOrderNo: Long) = db.withTransaction {
         val order = checkNotNull(dao.order(orderId)) { "no order $orderId" }
         dao.update(order.copy(status = OrderStatus.SYNCED, serverOrderNo = serverOrderNo, lastError = null))
