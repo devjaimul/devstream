@@ -32,7 +32,11 @@ Both are created and saved before the terminal is touched. When the cashier taps
 - **(a) Once.** The callback resumes the coroutine with `Approved(authCode)` or `Declined(reason)` and the caller updates the PENDING payment row.
 - **(b) Twice.** The first callback resumes; the second sees the flag already set and is only logged. Resuming twice would crash, and saving twice would double the payment, so it never gets that far (TC-13).
 - **(c) Never.** After 15 s the timeout fires and the first thing I do is `queryStatus(ref)`: APPROVED gives `Approved`, DECLINED gives `Declined`, NOT_FOUND gives `Unknown`. `charge()` is never called again for that ref, so TC-12 (1,077) ends Approved with `attempts(ref) == 1`. On `Unknown` the cashier sees "Card result unknown" with "Check again" (queries again) and "Not charged, try again" (voids that ref, new attempt with a new ref or cash). The app never re-charges by itself.
-- **(d) After the coroutine was cancelled.** The callback sees nobody is waiting and is only logged. Nothing is lost: the payment row is still PENDING in Room with its ref, and the next time the order is opened I call `queryStatus(ref)` and get the real answer. Room is the source of truth; the callback is just the fast way to hear about it.
+- **(d) After the coroutine was cancelled.** The callback sees nobody is waiting and is only logged. That only happens when the process dies, because the charge runs in an app-wide scope, not the screen's. Nothing is lost: the payment row is still PENDING in Room with its ref, and on the next start the app calls `queryStatus(ref)` for every open card row and records the real answer. Room is the source of truth; the callback is just the fast way to hear about it.
+
+## D4. Split payment: which tender first
+
+Card first, then cash. The card is the only tender that can be declined or come back unknown, so it goes first, and cash is only taken once the card part is approved, as the exact amount left, with the change shown (TC-10: card 600, cash due 494, tendered 500, change 6). If the card is declined, no cash is in the order yet: the full amount is still due, and the cashier can try another card (new ref), take it all in cash (notes already in hand count toward the tendered amount), or hand the notes back and cancel. While a card result is still pending or unknown, the app won't take cash or start another card on that order, so it can't be paid twice.
 
 ## D5. Catalog changes while orders are unsynced
 
