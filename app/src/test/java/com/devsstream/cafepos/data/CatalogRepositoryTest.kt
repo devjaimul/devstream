@@ -4,6 +4,7 @@ import com.devsstream.cafepos.MemoryCatalogCache
 import com.devsstream.cafepos.MemoryServerStore
 import com.devsstream.cafepos.core.appendixA
 import com.devsstream.cafepos.core.dhakaTime
+import com.devsstream.cafepos.data.remote.PosApi
 import com.devsstream.cafepos.data.remote.fake.Failures
 import com.devsstream.cafepos.data.remote.fake.FakePosServer
 import kotlinx.coroutines.test.runTest
@@ -53,6 +54,22 @@ class CatalogRepositoryTest {
 
         assertFalse(repo.refresh())
         assertEquals(1, repo.catalog.value!!.version)
+    }
+
+    @Test
+    fun `a catalog we can't read never replaces the good one`() = runTest {
+        val repo = CatalogRepository(server, cache)
+        repo.refresh()
+        val broken = object : PosApi by server {
+            override suspend fun getCatalog() = server.getCatalog().let {
+                it.copy(catalog = it.catalog.copy(version = 3, timeZone = "Not/A_Zone"))
+            }
+        }
+
+        assertFalse(CatalogRepository(broken, cache).refresh())
+
+        assertEquals(1, cache.saved!!.version)
+        assertEquals(appendixA, CatalogRepository(server, cache).catalog.value)
     }
 
     @Test
