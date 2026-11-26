@@ -25,3 +25,37 @@ Both are created and saved before the terminal is touched. When the cashier taps
 - **(b) Twice.** The first callback resumes; the second sees the flag already set and is only logged. Resuming twice would crash, and saving twice would double the payment, so it never gets that far (TC-13).
 - **(c) Never.** After 15 s the timeout fires and the first thing I do is `queryStatus(ref)`: APPROVED gives `Approved`, DECLINED gives `Declined`, NOT_FOUND gives `Unknown`. `charge()` is never called again for that ref, so TC-12 (1,077) ends Approved with `attempts(ref) == 1`. On `Unknown` the cashier sees "Card result unknown" with "Check again" (queries again) and "Not charged, try again" (voids that ref, new attempt with a new ref or cash). The app never re-charges by itself.
 - **(d) After the coroutine was cancelled.** The callback sees nobody is waiting and is only logged. Nothing is lost: the payment row is still PENDING in Room with its ref, and the next time the order is opened I call `queryStatus(ref)` and get the real answer. Room is the source of truth; the callback is just the fast way to hear about it.
+
+## D5. Catalog changes while orders are unsynced
+
+Every order keeps the prices it was sold at. When a sale is saved I store the catalog version and the whole breakdown with it (each line's label, unit price and total, P1, P2, discount, VAT, payable). Sync sends exactly those numbers and the receipt prints them, so if Latte goes to 240 while 3 orders are unsynced, those 3 still say 220. That's what the customer paid and what the payments cover. The new catalog only applies from the next cart (an open, unpaid cart just shows the new price), and the server can check old orders against their `catalogVersion`.
+
+## D6. Room schema and JSON shapes
+
+JSON: all money is integer poisha and the field names say so (`unitPricePoisha`), so nothing gets parsed or rounded on the way. Times are ISO-8601 UTC strings and `businessDay` is the Dhaka date as `yyyy-MM-dd`. `postOrder` carries the whole order (ids, receipt number, catalog version, what was picked, the breakdown and the payments) so the server can audit it and rebuild the day. Catalog rules, promotions and discounts use a `type` field.
+
+```json
+POST order
+{
+  "clientOrderId": "3f1c9e2a-...", "receiptNo": "T1-20261120-0001",
+  "createdAt": "2026-11-20T09:30:00Z", "businessDay": "2026-11-20",
+  "catalogVersion": 1, "coupon": "DEVS10",
+  "lines": [{ "productId": "latte", "sizeId": "large", "options": [{ "id": "oat", "quantity": 1 }],
+              "label": "Latte Large, Oat", "category": "BEVERAGE",
+              "quantity": 2, "unitPricePoisha": 33000, "totalPoisha": 66000 }],
+  "promotions": [{ "id": "P2", "amountPoisha": 6600 }],
+  "subtotalPoisha": 59400, "discount": { "id": "C1", "amountPoisha": 5940 },
+  "vatPoisha": 2673, "totalPoisha": 56133, "payablePoisha": 56100,
+  "payments": [{ "type": "CARD", "amountPoisha": 50000, "cardRef": "8d0b...", "authCode": "AUTH-123" },
+               { "type": "CASH", "amountPoisha": 6100, "tenderedPoisha": 10000, "changePoisha": 3900 }]
+}
+response: { "serverOrderNo": 7, "serverTime": "2026-11-20T09:32:31Z", "duplicate": false }
+
+GET catalog -> { "serverTime": "...", "catalog": { "version": 1, "timeZone": "Asia/Dhaka", "vatBps": 500,
+  "products": [...], "groups": [...],
+  "rules": [{ "id": "R1", "type": "requires", "optionId": "hazelnut", "anyOf": ["oat", "almond"] }],
+  "promotions": [{ "id": "P1", "type": "cheapest_free", "category": "BAKERY", "every": 3 }],
+  "orderDiscounts": [{ "id": "T1", "type": "threshold", "minSubtotalPoisha": 100000, "amountOffPoisha": 8000 }] } }
+```
+
+The full catalog file is `app/src/main/resources/fake-server/catalog-v1.json`.
