@@ -1,15 +1,9 @@
 package com.devsstream.cafepos.data
 
-import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
-import com.devsstream.cafepos.core.appendixA
 import com.devsstream.cafepos.core.bdt
 import com.devsstream.cafepos.core.dhakaTime
-import com.devsstream.cafepos.core.pricing.priceOrder
-import com.devsstream.cafepos.core.tc06Lines
 import com.devsstream.cafepos.data.local.OrderStatus
 import com.devsstream.cafepos.data.local.PaymentStatus
-import com.devsstream.cafepos.data.local.PosDatabase
 import com.devsstream.cafepos.payment.CardResult
 import com.devsstream.cafepos.time.ServerNow
 import kotlinx.coroutines.flow.first
@@ -27,23 +21,15 @@ import java.time.Instant
 @RunWith(RobolectricTestRunner::class)
 class OrderRepositoryTest {
 
-    private val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), PosDatabase::class.java)
-        .allowMainThreadQueries()
-        .build()
+    private val db = inMemoryDb()
     private val repo = OrderRepository(db)
-
-    private val at1530 = ServerNow(dhakaTime(2026, 11, 20, 15, 30), confirmed = true)
-
-    // the TC-06 order, payable 1,094
-    private suspend fun sale(now: ServerNow = at1530, payments: List<NewPayment> = listOf(NewPayment.Cash(bdt(1094), bdt(1100)))) =
-        repo.createOrder(tc06Lines, priceOrder(tc06Lines, appendixA, "DEVS10", now.time), "DEVS10", appendixA, now, payments)
 
     @After
     fun tearDown() = db.close()
 
     @Test
     fun `cash sale is saved with its lines and payment and is PENDING`() = runBlocking {
-        val saved = sale()
+        val saved = repo.tc06Sale()
 
         val order = saved.order
         assertEquals(OrderStatus.PENDING, order.status)
@@ -68,9 +54,9 @@ class OrderRepositoryTest {
 
     @Test
     fun `receipt numbers count up per day and start again the next day`() = runBlocking {
-        val first = sale().order.receiptNo
-        val second = sale().order.receiptNo
-        val nextDay = sale(ServerNow(dhakaTime(2026, 11, 21, 9, 0), confirmed = true)).order.receiptNo
+        val first = repo.tc06Sale().order.receiptNo
+        val second = repo.tc06Sale().order.receiptNo
+        val nextDay = repo.tc06Sale(ServerNow(dhakaTime(2026, 11, 21, 9, 0), confirmed = true)).order.receiptNo
 
         assertEquals("T1-20261120-0001", first)
         assertEquals("T1-20261120-0002", second)
@@ -80,7 +66,7 @@ class OrderRepositoryTest {
     @Test
     fun `business day is the Dhaka date, not the UTC one`() = runBlocking {
         // 18:30 UTC on the 20th is 00:30 on the 21st in Dhaka
-        val order = sale(ServerNow(Instant.parse("2026-11-20T18:30:00Z"), confirmed = true)).order
+        val order = repo.tc06Sale(ServerNow(Instant.parse("2026-11-20T18:30:00Z"), confirmed = true)).order
 
         assertEquals("2026-11-21", order.businessDay)
         assertEquals("T1-20261121-0001", order.receiptNo)
@@ -88,14 +74,14 @@ class OrderRepositoryTest {
 
     @Test
     fun `unconfirmed server time is kept on the order`() = runBlocking {
-        val order = sale(ServerNow(dhakaTime(2026, 11, 20, 15, 30), confirmed = false)).order
+        val order = repo.tc06Sale(ServerNow(dhakaTime(2026, 11, 20, 15, 30), confirmed = false)).order
 
         assertFalse(order.timeConfirmed)
     }
 
     @Test
     fun `card sale stays PAYING until the card is approved`() = runBlocking {
-        val saved = sale(payments = listOf(NewPayment.Card(bdt(1094))))
+        val saved = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(1094))))
         assertEquals(OrderStatus.PAYING, saved.order.status)
 
         val card = saved.payments.single()
@@ -111,7 +97,7 @@ class OrderRepositoryTest {
 
     @Test
     fun `declined card leaves the order unpaid and cash can finish it`() = runBlocking {
-        val saved = sale(payments = listOf(NewPayment.Card(bdt(1094))))
+        val saved = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(1094))))
         repo.finishCardPayment(saved.payments.single().cardRef!!, CardResult.Declined("INSUFFICIENT_FUNDS"))
 
         val declined = repo.order(saved.order.id)!!
@@ -127,7 +113,7 @@ class OrderRepositoryTest {
 
     @Test
     fun `card plus cash pays the order only when both are in`() = runBlocking {
-        val saved = sale(payments = listOf(NewPayment.Card(bdt(600))))
+        val saved = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(600))))
         repo.finishCardPayment(saved.payments.single().cardRef!!, CardResult.Approved("AUTH-2"))
         assertEquals(OrderStatus.PAYING, repo.order(saved.order.id)!!.order.status)
 
@@ -141,10 +127,10 @@ class OrderRepositoryTest {
 
     @Test
     fun `cancelled sale stays visible and its receipt number is not reused`() = runBlocking {
-        val unpaid = sale(payments = emptyList())
+        val unpaid = repo.tc06Sale(payments = emptyList())
         assertTrue(repo.cancel(unpaid.order.id))
 
-        val next = sale()
+        val next = repo.tc06Sale()
 
         assertEquals("T1-20261120-0002", next.order.receiptNo)
         val all = repo.observeOrders().first()
@@ -154,17 +140,17 @@ class OrderRepositoryTest {
 
     @Test
     fun `cancel is refused while a card result is open or money was taken`() = runBlocking {
-        val pending = sale(payments = listOf(NewPayment.Card(bdt(1094))))
+        val pending = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(1094))))
         assertFalse(repo.cancel(pending.order.id))
 
         repo.finishCardPayment(pending.payments.single().cardRef!!, CardResult.Unknown)
         assertFalse(repo.cancel(pending.order.id))
 
-        val partlyPaid = sale(payments = listOf(NewPayment.Card(bdt(600))))
+        val partlyPaid = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(600))))
         repo.finishCardPayment(partlyPaid.payments.single().cardRef!!, CardResult.Approved("AUTH-3"))
         assertFalse(repo.cancel(partlyPaid.order.id))
 
-        val paid = sale()
+        val paid = repo.tc06Sale()
         assertFalse(repo.cancel(paid.order.id))
 
         assertEquals(OrderStatus.PAYING, repo.order(pending.order.id)!!.order.status)
@@ -174,7 +160,7 @@ class OrderRepositoryTest {
 
     @Test
     fun `5th failed upload makes it FAILED, Retry puts it back with nothing lost`() = runBlocking {
-        val id = sale().order.id
+        val id = repo.tc06Sale().order.id
 
         repeat(4) { assertEquals(OrderStatus.PENDING, repo.syncFailed(id, "no network")) }
         assertEquals(OrderStatus.FAILED, repo.syncFailed(id, "HTTP 500"))
@@ -196,10 +182,10 @@ class OrderRepositoryTest {
 
     @Test
     fun `orders to sync are the paid ones, oldest first`() = runBlocking {
-        val a = sale().order.id
-        sale(payments = emptyList()) // still paying
-        val b = sale().order.id
-        val c = sale().order.id
+        val a = repo.tc06Sale().order.id
+        repo.tc06Sale(payments = emptyList()) // still paying
+        val b = repo.tc06Sale().order.id
+        val c = repo.tc06Sale().order.id
         repo.markSynced(b, serverOrderNo = 1)
 
         assertEquals(listOf(a, c), repo.ordersToSync().map { it.order.id })
@@ -210,10 +196,10 @@ class OrderRepositoryTest {
     @Test
     fun `a write that fails halfway leaves nothing behind`() = runBlocking {
         // order and lines are inserted, then the cash payment is rejected
-        val error = runCatching { sale(payments = listOf(NewPayment.Cash(bdt(1094), tendered = bdt(1000)))) }.exceptionOrNull()
+        val error = runCatching { repo.tc06Sale(payments = listOf(NewPayment.Cash(bdt(1094), tendered = bdt(1000)))) }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
 
         assertTrue(repo.observeOrders().first().isEmpty())
-        assertEquals("T1-20261120-0001", sale().order.receiptNo)
+        assertEquals("T1-20261120-0001", repo.tc06Sale().order.receiptNo)
     }
 }
