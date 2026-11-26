@@ -19,9 +19,11 @@ You need JDK 17 and the Android SDK (platform 36). Android Studio has both.
 ./gradlew :app:testDebugUnitTest --tests "*AnswersTest" -Panswers --rerun   # prints ANSWERS.md from the code
 ```
 
-There are 126 tests: 36 in `:core`, 90 in `:app`. Gradle runs the `:app` tests for both debug and release, so the console shows them twice. The first run downloads Robolectric's Android jar, which takes a minute. CI runs the same tests and builds the APK on every push ([.github/workflows/test.yml](.github/workflows/test.yml)). The debug APK is also attached to the GitHub release.
+There are 128 tests: 36 in `:core`, 92 in `:app`. Gradle runs the `:app` tests for both debug and release, so the console shows them twice. The first run downloads Robolectric's Android jar, which takes a minute. CI runs the same tests and builds the APK on every push ([.github/workflows/test.yml](.github/workflows/test.yml)). The debug APK is also attached to the GitHub release.
 
 ## Trying it on a phone
+
+Do TC-18 first, on a fresh install: the summary counts every paid sale of the day, so sales made on 20 Nov for the other checks change its totals.
 
 The **Server** tab has the Appendix C test hooks:
 - server time, with buttons for 20 Nov 15:30, 20 Nov 17:00 and 1 Dec 15:30;
@@ -31,6 +33,7 @@ The **Server** tab has the Appendix C test hooks:
 
 | To see | Do |
 |---|---|
+| TC-18 | Summary tab, then **Load Appendix B seed**: 4,914, 6 orders, Croissant 9, cash 2,325, card 2,589. |
 | TC-01 to TC-04 | Open Latte. The rule messages show live and Add stays disabled. |
 | TC-06 | Server time 20 Nov 15:30. Latte Large + Oat + Extra shot + Vanilla ×2, Croissant ×2, Brownie ×2, coupon `DEVS10`: payable 1,094. |
 | TC-07, TC-08 | Same cart after setting the server time to 17:00 or 1 Dec. |
@@ -39,8 +42,7 @@ The **Server** tab has the Appendix C test hooks:
 | TC-14 | Airplane mode, make 3 sales, turn it off. The Orders tab shows them go out in order. |
 | TC-15 | Failures ERROR_AFTER_SAVE, make a sale: the server keeps it but answers 500. Switch back to OFF: the retry comes back as a duplicate, and the server still has one copy. |
 | TC-16 | Failures NETWORK_DOWN, make a sale: after 5 tries it's FAILED and stays in Orders. Switch to OFF and tap Retry. |
-| TC-17 | Start a card ending in 77, press Home, run `adb shell am kill com.devsstream.cafepos`, open the app again. |
-| TC-18 | Summary tab, then **Load Appendix B seed**. |
+| TC-17 | Rotate while a card is waiting: nothing changes. For process death, start a card ending in 77, press Home, run `adb shell am kill com.devsstream.cafepos`, open the app again. The order screen comes back and the app asks the terminal instead of charging. The simulated terminal died with the process, so it shows "Card result unknown" (see Limitations). |
 
 ## Architecture
 
@@ -113,7 +115,7 @@ The menu, sizes, modifier groups, limits, rules, promotions and coupons all come
 - Promotion names come from their type.
 - Category colours come from their position in the catalog.
 
-A search of the main sources finds no product, option or rule ids and no prices. The only "T1" is the till prefix in receipt numbers. **Bump catalog** on the Server tab makes Latte 240 with no code change. The Appendix B seed is a data file (`app/src/main/resources/seed/appendix-b.json`) that our engine prices.
+A search of the app and engine code finds no product, option or rule ids, prices or limits. The only literals left are the till prefix "T1" in receipt numbers and the Server tab's preset test times from section 8. At the tap, Checkout checks every line against the current catalog again, so a stricter or replaced catalog can't let an invalid line through. A catalog that can't be read is ignored and the last good one stays in use. **Bump catalog** on the Server tab makes Latte 240 with no code change. The Appendix B seed is a data file (`app/src/main/resources/seed/appendix-b.json`) that our engine prices.
 
 ## Trade-offs
 
@@ -123,6 +125,8 @@ A search of the main sources finds no product, option or rule ids and no prices.
 - **Unique work with APPEND_OR_REPLACE** can cause a few empty sync runs, but a sale saved during a run is never missed.
 - **Price drift:** prices are checked again at the tap, and a changed price is shown rather than charged.
 - **The day summary** is worked out in Kotlin from one day's Room Flow, not SQL sums. A day is small, and one pure function is easy to test.
+- **Writes in steps.** The first write of a sale is one transaction (order, lines, first payment). With a card, the result and any cash for the rest are later transactions, because the card row has to be on disk before the terminal is called (D3).
+- **Hand-written fakes instead of MockK.** The fakes (FakePosServer, in-memory stores, the real LegacyCardTerminal) are needed by the app anyway, and they test real behaviour, not mocked calls.
 - **The fake server runs inside the app.** `OfflineGateApi` makes airplane mode count as "no network" for it too, and its state lives in its own file so a killed app doesn't wipe the "server".
 - **Robolectric tests run on SDK 34**, because SDK 35+ needs JDK 21 and the build uses 17.
 
@@ -130,7 +134,9 @@ A search of the main sources finds no product, option or rule ids and no prices.
 
 - **Part F live order board** (fake WebSocket) is not done. The other two bonus items, CI and the pure-Kotlin pricing module, are.
 - **The card terminal is simulated inside the app process.** After a real process kill it forgets every ref, so a card that was waiting comes back as "Card result unknown", and the cashier checks the terminal's slip. The app never charges that ref again. A real terminal is a separate device and would still know.
-- **After a reboot with no network**, server time is a best guess. It never goes back before the last server time, and those orders are marked "time not confirmed". Moving the phone clock *forward* in that state can't be detected until the next server reply. The fake server's own clock also starts again from the phone clock after a reboot.
+- **After a reboot with no network**, server time is a best guess. It never goes back before the last server time, and those orders are marked "time not confirmed". Moving the phone clock *forward* in that state can't be detected until the next server reply. The fake server's own clock also starts again from the phone clock after a reboot, and it only spots a reboot when uptime is lower than before (the app's clock also uses the boot count).
+- **The very first start needs a network once**, to get the catalog. After that the cached catalog is used offline.
+- **No refund flow.** A sale left part-paid (for example the app died after the card part was approved) can't be cancelled; it has to be finished. A banner on the menu shows unfinished sales so they aren't rung up again.
 - **A cart that isn't paid yet is kept in memory**, so it's lost if Android kills the app before Pay. Orders and payments are always in Room.
 - **The receipt sequence lives on the device.** Clearing app data starts it again; a real server would need to own it.
 - **The summary counts every paid sale of the day.** The Appendix B total (4,914) assumes the seed is the only thing on 20 Nov.
@@ -139,8 +145,8 @@ A search of the main sources finds no product, option or rule ids and no prices.
 
 ## Time spent
 
-About 12 hours.
+About 12 hours. That covers reading the brief, setting up, learning the Kotlin and Android parts I didn't know (coroutines, Room, Hilt, WorkManager), the decisions, and testing on the emulator, not only the coding the commit times show.
 
 ## How I used AI
 
-I'm a Flutter developer, and this was my first full Kotlin/Android project. I used an AI assistant (Claude, through Claude Code) heavily: it wrote most of the code, tests and first drafts of the documents, in small steps. For each decision point I was given options with the trade-offs and picked one, and DECISIONS.md records those choices. I went through each step with explanations mapped to things I know from Flutter (a Completer and `suspendCancellableCoroutine`, drift and Room, `fake_async` and `runTest`), ran the tests, and committed it myself. That's why the history is made of many small commits. The Section 8 and Appendix B numbers were worked out by hand first and then compared with the engine, and the app was run on an emulator, not only tested.
+I'm a Flutter developer, and this was my first full Kotlin/Android project. I used an AI assistant (Claude, through Claude Code) heavily: it wrote most of the code and tests, in small steps, and drafted the README and ANSWERS.md. For each decision point I was given options with the trade-offs and picked one, and DECISIONS.md is those choices in my own words. I went through each step with explanations mapped to things I know from Flutter (a Completer and `suspendCancellableCoroutine`, drift and Room, `fake_async` and `runTest`), ran the tests, and committed it myself. That's why the history is made of many small commits. The Section 8 and Appendix B numbers were worked out by hand first and then compared with the engine, and the app was run on an emulator, not only tested.
