@@ -13,6 +13,14 @@ Money is always `Long` poisha (1 BDT = 100 poisha). Times are server time in Asi
 - In code it's Long math with the rate in basis points (5% = 500): (94,050 x 500 + 5,000) / 10,000 = 47,030,000 / 10,000 = 4,703. Adding half the divisor (5,000) before the integer division turns "cut off" into "round half up". That's only correct for non-negative values, which money here always is.
 - Payable = 94,050 + 4,703 = 98,753 poisha = 987.53 BDT. Rounded half-up to whole BDT: (98,753 + 50) / 100 = **988 BDT**.
 
+## D1. Server time, offline and after a restart
+
+Every API response carries `serverTime`. When one arrives I save an anchor: that server time, `SystemClock.elapsedRealtime()` at the middle of the request (cancels half the latency) and the boot count. "Now" is anchor time + (elapsedRealtime − anchor elapsed). elapsedRealtime counts from boot, doesn't move when the cashier changes the clock and keeps going across app restarts, so offline + restart is fine and the phone clock is never used. After a reboot the anchor is useless: then I use phone clock + last known offset, but never earlier than the last server time I saw, show "Time not confirmed" and mark those orders, until the next response fixes it.
+
+## C4. Phone says 19 November and the app is offline
+
+The sale belongs to 20 November. The app never asks the phone what day it is: the business day is `ServerClock.now()` in Asia/Dhaka, and that is the last server time plus how long has passed on the monotonic clock. Changing the phone's date changes `System.currentTimeMillis()`, which this doesn't read. Even if the phone was also rebooted offline, the fallback can't go back before the last server time it saw (20 Nov), so the sale still lands on 20 Nov, just marked "time not confirmed" until the next sync.
+
 ## D3. When the client id and the card ref are created
 
 Both are created and saved before the terminal is touched. When the cashier taps Pay, the order gets its clientOrderId (UUID, once per order) and each card attempt gets a new card ref (UUID). Order, lines and the card payment row (ref, PENDING) go into Room in one transaction, and only after that commit do I call `charge(ref)`. So if the app dies any time after `charge()`, the ref is already on disk and the next launch asks `queryStatus(ref)` instead of charging again. A declined or voided attempt keeps its row; a retry gets a new ref.
