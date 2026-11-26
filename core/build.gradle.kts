@@ -9,3 +9,9 @@ kotlin {
 dependencies {
     testImplementation(libs.junit)
 }
+
+tasks.test {
+    testLogging {
+        events("passed", "failed", "skipped")
+    }
+}

@@ -19,6 +19,9 @@ data class Catalog(
 
     fun option(id: String): ModifierOption? =
         groups.firstNotNullOfOrNull { g -> g.options.find { it.id == id } }
+
+    fun groupOf(optionId: String): ModifierGroup? =
+        groups.find { g -> g.options.any { it.id == optionId } }
 }
 
 data class Product(
