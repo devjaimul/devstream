@@ -31,6 +31,9 @@ interface OrderDao {
     @Query("SELECT * FROM orders WHERE id = :id")
     suspend fun order(id: Long): OrderEntity?
 
+    @Query("SELECT * FROM orders WHERE clientOrderId = :clientOrderId")
+    suspend fun orderByClientId(clientOrderId: String): OrderEntity?
+
     @Query("SELECT * FROM payments WHERE id = :id")
     suspend fun payment(id: Long): PaymentEntity?
 
@@ -62,6 +65,10 @@ interface OrderDao {
     @Transaction
     @Query("SELECT * FROM orders ORDER BY id DESC")
     fun observeAll(): Flow<List<OrderWithDetails>>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE businessDay = :day ORDER BY id")
+    fun observeDay(day: String): Flow<List<OrderWithDetails>>
 
     @Query("SELECT COUNT(*) FROM orders WHERE status IN (:statuses)")
     fun observeCount(statuses: Set<OrderStatus>): Flow<Int>

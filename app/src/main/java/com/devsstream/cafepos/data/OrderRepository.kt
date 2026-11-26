@@ -18,6 +18,7 @@ import com.devsstream.cafepos.data.remote.PaymentType
 import com.devsstream.cafepos.payment.CardResult
 import com.devsstream.cafepos.time.ServerNow
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,6 +36,19 @@ sealed interface NewPayment {
     data class Card(override val amount: Long) : NewPayment
 }
 
+// An order that was paid somewhere else, e.g. the Appendix B seed.
+data class PaidOrder(
+    val clientOrderId: String,
+    val lines: List<OrderLine>,
+    val price: PriceBreakdown,
+    val coupon: String?,
+    val catalog: Catalog,
+    val at: ServerNow,
+    val payments: List<ImportedPayment>,
+)
+
+data class ImportedPayment(val type: PaymentType, val amount: Long, val cardRef: String? = null)
+
 @Singleton
 class OrderRepository @Inject constructor(private val db: PosDatabase) {
 
@@ -45,6 +59,9 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
     fun observeOrder(id: Long): Flow<OrderWithDetails?> = dao.observe(id)
 
     suspend fun order(id: Long): OrderWithDetails? = dao.details(id)
+
+    // every order of one business day, for the summary
+    fun observeDay(day: LocalDate): Flow<List<OrderWithDetails>> = dao.observeDay(day.toString())
 
     // paid but not on the server: waiting to go, or given up and waiting for Retry
     fun observeNotSyncedCount(): Flow<Int> = dao.observeCount(setOf(OrderStatus.PENDING, OrderStatus.FAILED))
@@ -59,50 +76,39 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
         now: ServerNow,
         payments: List<NewPayment> = emptyList(),
     ): OrderWithDetails = db.withTransaction {
-        require(lines.size == price.lines.size) { "lines and priced lines don't match" }
         require(payments.sumOf { it.amount } <= price.payable) { "payments are more than the payable" }
-
-        val day = now.time.businessDay(catalog.timeZone)
-        val seq = (dao.lastReceiptSeq(day.toString()) ?: 0) + 1
-        val orderId = dao.insert(
-            OrderEntity(
-                clientOrderId = UUID.randomUUID().toString(),
-                receiptNo = receiptNumber(TILL_ID, day, seq),
-                businessDay = day.toString(),
-                receiptSeq = seq,
-                createdAt = now.time.toEpochMilli(),
-                timeConfirmed = now.confirmed,
-                catalogVersion = catalog.version,
-                coupon = coupon?.trim()?.takeIf { it.isNotEmpty() },
-                couponRejection = price.couponRejection,
-                subtotal = price.subtotal,
-                promotions = price.promotions.associate { it.id to it.amount },
-                discountId = price.discount?.id,
-                discountAmount = price.discount?.amount ?: 0,
-                vat = price.vat,
-                total = price.total,
-                payable = price.payable,
-                status = OrderStatus.PAYING,
-            )
-        )
-        dao.insertLines(
-            lines.zip(price.lines) { line, priced ->
-                OrderLineEntity(
-                    orderId = orderId,
-                    productId = priced.productId,
-                    sizeId = line.selection.sizeId,
-                    options = line.selection.options.filterValues { it > 0 },
-                    label = priced.label,
-                    category = priced.category,
-                    quantity = priced.quantity,
-                    unitPrice = priced.unitPrice,
-                    total = priced.total,
-                )
-            }
-        )
+        val orderId = insertOrder(UUID.randomUUID().toString(), lines, price, coupon, catalog, now)
         payments.forEach { dao.insert(it.toEntity(orderId)) }
         settle(orderId)
         checkNotNull(dao.details(orderId))
+    }
+
+    // Saved like a sale, already paid, so it goes out with the next sync.
+    // An order whose client id is already there is skipped, so loading twice adds nothing.
+    suspend fun importPaidOrders(orders: List<PaidOrder>): Int = db.withTransaction {
+        var added = 0
+        for (o in orders) {
+            if (dao.orderByClientId(o.clientOrderId) != null) continue
+            require(o.payments.sumOf { it.amount } == o.price.payable) { "${o.clientOrderId} isn't paid in full" }
+            val orderId = insertOrder(o.clientOrderId, o.lines, o.price, o.coupon, o.catalog, o.at)
+            for (p in o.payments) {
+                val cash = p.type == PaymentType.CASH
+                dao.insert(
+                    PaymentEntity(
+                        orderId = orderId,
+                        type = p.type,
+                        status = PaymentStatus.APPROVED,
+                        amount = p.amount,
+                        tendered = if (cash) p.amount else null,
+                        change = if (cash) 0 else null,
+                        cardRef = p.cardRef,
+                    )
+                )
+            }
+            settle(orderId)
+            added++
+        }
+        added
     }
 
     // Checked inside the transaction, so two taps at once can't both get through (D4).
@@ -177,6 +183,59 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
         if (order.status == OrderStatus.FAILED) {
             dao.update(order.copy(status = OrderStatus.PENDING, syncAttempts = 0))
         }
+    }
+
+    // Order and lines, with the next receipt number of that business day. Always called
+    // inside a transaction, so reading the last number and inserting can't interleave.
+    private suspend fun insertOrder(
+        clientOrderId: String,
+        lines: List<OrderLine>,
+        price: PriceBreakdown,
+        coupon: String?,
+        catalog: Catalog,
+        now: ServerNow,
+    ): Long {
+        require(lines.size == price.lines.size) { "lines and priced lines don't match" }
+
+        val day = now.time.businessDay(catalog.timeZone)
+        val seq = (dao.lastReceiptSeq(day.toString()) ?: 0) + 1
+        val orderId = dao.insert(
+            OrderEntity(
+                clientOrderId = clientOrderId,
+                receiptNo = receiptNumber(TILL_ID, day, seq),
+                businessDay = day.toString(),
+                receiptSeq = seq,
+                createdAt = now.time.toEpochMilli(),
+                timeConfirmed = now.confirmed,
+                catalogVersion = catalog.version,
+                coupon = coupon?.trim()?.takeIf { it.isNotEmpty() },
+                couponRejection = price.couponRejection,
+                subtotal = price.subtotal,
+                promotions = price.promotions.associate { it.id to it.amount },
+                discountId = price.discount?.id,
+                discountAmount = price.discount?.amount ?: 0,
+                vat = price.vat,
+                total = price.total,
+                payable = price.payable,
+                status = OrderStatus.PAYING,
+            )
+        )
+        dao.insertLines(
+            lines.zip(price.lines) { line, priced ->
+                OrderLineEntity(
+                    orderId = orderId,
+                    productId = priced.productId,
+                    sizeId = line.selection.sizeId,
+                    options = line.selection.options.filterValues { it > 0 },
+                    label = priced.label,
+                    category = priced.category,
+                    quantity = priced.quantity,
+                    unitPrice = priced.unitPrice,
+                    total = priced.total,
+                )
+            }
+        )
+        return orderId
     }
 
     // PAYING becomes PENDING (paid) once approved payments cover the payable
