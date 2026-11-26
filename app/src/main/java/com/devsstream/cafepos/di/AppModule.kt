@@ -3,6 +3,8 @@ package com.devsstream.cafepos.di
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import androidx.room.Room
+import com.devsstream.cafepos.data.local.PosDatabase
 import com.devsstream.cafepos.data.remote.ClockSyncingApi
 import com.devsstream.cafepos.data.remote.PosApi
 import com.devsstream.cafepos.data.remote.fake.FakePosServer
@@ -47,6 +49,12 @@ object AppModule {
     @Singleton
     fun posApi(server: FakePosServer, clock: ServerClock): PosApi =
         ClockSyncingApi(server, clock, SystemClock::elapsedRealtime)
+
+    // no fallbackToDestructiveMigration: wiping unsynced sales is never ok
+    @Provides
+    @Singleton
+    fun database(@ApplicationContext context: Context): PosDatabase =
+        Room.databaseBuilder(context, PosDatabase::class.java, "pos.db").build()
 
     @Provides
     @Singleton
