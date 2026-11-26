@@ -60,13 +60,13 @@ payments     id PK, orderId FK, type CASH|CARD, status PENDING|APPROVED|DECLINED
 
 Cash rows are written APPROVED straight away. The generated schema is in `app/schemas/`.
 
-JSON: all money is integer poisha and the field names say so (`unitPricePoisha`), so nothing gets parsed or rounded on the way. Times are ISO-8601 UTC strings and `businessDay` is the Dhaka date as `yyyy-MM-dd`. `postOrder` carries the whole order (ids, receipt number, catalog version, what was picked, the breakdown and the payments) so the server can audit it and rebuild the day. Catalog rules, promotions and discounts use a `type` field.
+JSON: all money is integer poisha and the field names say so (`unitPricePoisha`), so nothing gets parsed or rounded on the way. Times are ISO-8601 UTC strings and `businessDay` is the Dhaka date as `yyyy-MM-dd`. `postOrder` carries the whole order (ids, receipt number, catalog version, what was picked, the breakdown and the payments that paid it; declined or voided card attempts stay on the till) so the server can audit it and rebuild the day. Catalog rules, promotions and discounts use a `type` field.
 
 ```json
 POST order
 {
   "clientOrderId": "3f1c9e2a-...", "receiptNo": "T1-20261120-0001",
-  "createdAt": "2026-11-20T09:30:00Z", "businessDay": "2026-11-20",
+  "createdAt": "2026-11-20T09:30:00Z", "businessDay": "2026-11-20", "timeConfirmed": true,
   "catalogVersion": 1, "coupon": "DEVS10",
   "lines": [{ "productId": "latte", "sizeId": "large", "options": [{ "id": "oat", "quantity": 1 }],
               "label": "Latte Large, Oat", "category": "BEVERAGE",
@@ -87,3 +87,11 @@ GET catalog -> { "serverTime": "...", "catalog": { "version": 1, "timeZone": "As
 ```
 
 The full catalog file is `app/src/main/resources/fake-server/catalog-v1.json`.
+
+## C3. The POST reached the server, then the app was killed
+
+1. Before the kill: the server saved the order (say #7), but the app never read the answer. In Room the order is still PENDING with no server number, and no failure was counted either, because the code after the POST never ran.
+2. Next launch: `PosApp.onCreate` asks for a sync. WorkManager would also run it again on its own, since it keeps its queue in its own database.
+3. Once there is a network, the worker takes the oldest PENDING order, which is this one, and POSTs it again with the same `clientOrderId` and the same body. Nothing is rebuilt or re-priced.
+4. The server already has that `clientOrderId`, so it answers `serverOrderNo 7, duplicate = true` and creates nothing.
+5. The app treats duplicate as success: the order becomes SYNCED with #7 and the worker moves on to the next one. The server still has exactly one copy (TC-15). A 500 after the save works the same way, it just counts as one failed attempt first.
