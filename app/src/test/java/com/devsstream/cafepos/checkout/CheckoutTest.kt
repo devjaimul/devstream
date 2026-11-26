@@ -185,6 +185,18 @@ class CheckoutTest {
     }
 
     @Test
+    fun `a cart that no longer fits the catalog is not saved`() = runBlocking {
+        // the catalog changed while the cart was open: no extra shots allowed any more
+        val tighter = appendixA.copy(groups = appendixA.groups.map { if (it.id == "shots") it.copy(max = 0) else it })
+        val shownWithTighter = priceOrder(tc06Lines, tighter, "DEVS10", at1530)
+
+        val result = checkout.payCash(tc06Lines, tighter, "DEVS10", shownWithTighter, tendered = bdt(1100))
+
+        assertTrue(result is CheckoutResult.NotValid)
+        assertTrue(repo.observeOrders().first().isEmpty())
+    }
+
+    @Test
     fun `no cash, no second card and no cancel while a card result is open`() = runBlocking {
         val id = checkout.card(bdt(1077)) // waits up to 15 s
 

@@ -4,6 +4,7 @@ import com.devsstream.cafepos.core.catalog.Catalog
 import com.devsstream.cafepos.core.pricing.OrderLine
 import com.devsstream.cafepos.core.pricing.PriceBreakdown
 import com.devsstream.cafepos.core.pricing.priceOrder
+import com.devsstream.cafepos.core.validation.validate
 import com.devsstream.cafepos.data.NewPayment
 import com.devsstream.cafepos.data.OrderRepository
 import com.devsstream.cafepos.data.local.OrderStatus
@@ -18,6 +19,9 @@ sealed interface CheckoutResult {
 
     // Nothing was saved. Show these numbers and let the cashier tap again.
     data class PriceChanged(val price: PriceBreakdown) : CheckoutResult
+
+    // Nothing was saved: under the current catalog some line breaks a rule or is gone.
+    data class NotValid(val problems: List<String>) : CheckoutResult
 }
 
 // D4: card first, then cash. Cash only ever pays everything that's left.
@@ -72,8 +76,9 @@ class Checkout @Inject constructor(
 
     suspend fun cancel(orderId: Long): Boolean = orders.cancel(orderId)
 
-    // Priced again at the server time of the tap. If that's not what the cashier was
-    // looking at (happy hour just ended, catalog changed...) nothing is saved.
+    // Checked and priced again at the server time of the tap, against the catalog we
+    // have now. If a line no longer fits, or the price isn't what the cashier was looking
+    // at (happy hour just ended, catalog changed...), nothing is saved.
     private suspend fun save(
         lines: List<OrderLine>,
         catalog: Catalog,
@@ -81,6 +86,13 @@ class Checkout @Inject constructor(
         shown: PriceBreakdown,
         firstPayment: (PriceBreakdown) -> NewPayment,
     ): CheckoutResult {
+        val problems = lines.flatMap { line ->
+            val product = catalog.product(line.selection.productId)
+                ?: return@flatMap listOf("${line.selection.productId} is no longer on the menu")
+            validate(line.selection, product, catalog).map { "${product.name}: ${it.message}" }
+        }
+        if (problems.isNotEmpty()) return CheckoutResult.NotValid(problems)
+
         val now = clock.now()
         val price = priceOrder(lines, catalog, coupon, now.time)
         if (price != shown) return CheckoutResult.PriceChanged(price)

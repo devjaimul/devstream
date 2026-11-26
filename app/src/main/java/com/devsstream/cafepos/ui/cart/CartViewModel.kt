@@ -104,6 +104,7 @@ class CartViewModel @Inject constructor(
                 when (val result = action(cart.value.lines, catalog, cart.value.coupon.ifBlank { null }, shown)) {
                     is CheckoutResult.Saved -> cart.value = Cart(openOrderId = result.orderId)
                     is CheckoutResult.PriceChanged -> cart.update { it.copy(priceChanged = true) }
+                    is CheckoutResult.NotValid -> cart.update { it.copy(error = result.problems.joinToString("\n")) }
                 }
             } catch (e: IllegalArgumentException) {
                 cart.update { it.copy(error = e.message) }
