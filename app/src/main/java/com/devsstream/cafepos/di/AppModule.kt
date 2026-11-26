@@ -4,11 +4,15 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import androidx.room.Room
+import com.devsstream.cafepos.data.CatalogCache
+import com.devsstream.cafepos.data.FileCatalogCache
 import com.devsstream.cafepos.data.local.PosDatabase
 import com.devsstream.cafepos.data.remote.ClockSyncingApi
+import com.devsstream.cafepos.data.remote.OfflineGateApi
 import com.devsstream.cafepos.data.remote.PosApi
 import com.devsstream.cafepos.data.remote.fake.FakePosServer
 import com.devsstream.cafepos.data.remote.fake.FileServerStore
+import com.devsstream.cafepos.data.remote.isOnline
 import com.devsstream.cafepos.data.sync.SyncScheduler
 import com.devsstream.cafepos.data.sync.WorkManagerSyncScheduler
 import com.devsstream.cafepos.payment.CardTerminal
@@ -62,8 +66,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun posApi(server: FakePosServer, clock: ServerClock): PosApi =
-        ClockSyncingApi(server, clock, SystemClock::elapsedRealtime)
+    fun posApi(@ApplicationContext context: Context, server: FakePosServer, clock: ServerClock): PosApi =
+        ClockSyncingApi(OfflineGateApi(server) { isOnline(context) }, clock, SystemClock::elapsedRealtime)
+
+    @Provides
+    @Singleton
+    fun catalogCache(@ApplicationContext context: Context): CatalogCache =
+        FileCatalogCache(File(context.filesDir, "catalog.json"))
 
     // no fallbackToDestructiveMigration: wiping unsynced sales is never ok
     @Provides
