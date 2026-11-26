@@ -1,0 +1,62 @@
+{
+  "name": "Appendix B, 20 November 2026",
+  "note": "Prices are not given, the engine works them out. Payment: allCard, or cardPoisha for the card part with the rest in cash, otherwise all cash.",
+  "catalogVersion": 1,
+  "orders": [
+    {
+      "ref": "O1",
+      "serverTime": "2026-11-20T08:40:00+06:00",
+      "lines": [
+        { "productId": "americano", "sizeId": "regular", "quantity": 1 },
+        { "productId": "croissant", "quantity": 1 }
+      ]
+    },
+    {
+      "ref": "O2",
+      "serverTime": "2026-11-20T15:10:00+06:00",
+      "allCard": true,
+      "lines": [
+        { "productId": "latte", "sizeId": "large", "options": { "oat": 1 }, "quantity": 2 },
+        { "productId": "brownie", "quantity": 3 }
+      ]
+    },
+    {
+      "ref": "O3",
+      "serverTime": "2026-11-20T16:59:00+06:00",
+      "coupon": "DEVS10",
+      "cardPoisha": 50000,
+      "lines": [
+        { "productId": "iced_tea", "sizeId": "large", "quantity": 3 },
+        { "productId": "chicken_sandwich", "quantity": 2 }
+      ]
+    },
+    {
+      "ref": "O4",
+      "serverTime": "2026-11-20T17:00:00+06:00",
+      "allCard": true,
+      "lines": [
+        { "productId": "americano", "sizeId": "large", "options": { "oat": 1, "extra_shot": 2, "hazelnut": 1 }, "quantity": 1 },
+        { "productId": "veg_wrap", "quantity": 2 },
+        { "productId": "brownie", "quantity": 1 },
+        { "productId": "croissant", "quantity": 2 }
+      ]
+    },
+    {
+      "ref": "O5",
+      "serverTime": "2026-11-20T11:20:00+06:00",
+      "coupon": "DEVS10",
+      "lines": [
+        { "productId": "latte", "sizeId": "regular", "options": { "almond": 1 }, "quantity": 1 },
+        { "productId": "veg_wrap", "quantity": 1 }
+      ]
+    },
+    {
+      "ref": "O6",
+      "serverTime": "2026-11-20T15:45:00+06:00",
+      "lines": [
+        { "productId": "croissant", "quantity": 6 },
+        { "productId": "americano", "sizeId": "regular", "quantity": 2 }
+      ]
+    }
+  ]
+}
