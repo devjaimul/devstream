@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "timeZone": "Asia/Dhaka",
+  "vatBps": 500,
+  "products": [
+    {
+      "id": "americano", "name": "Americano", "category": "BEVERAGE", "basePricePoisha": 18000,
+      "sizes": [
+        { "id": "regular", "name": "Regular", "extraPoisha": 0 },
+        { "id": "large", "name": "Large", "extraPoisha": 4000 }
+      ],
+      "groupIds": ["milk", "shots", "syrup"]
+    },
+    {
+      "id": "latte", "name": "Latte", "category": "BEVERAGE", "basePricePoisha": 22000,
+      "sizes": [
+        { "id": "regular", "name": "Regular", "extraPoisha": 0 },
+        { "id": "large", "name": "Large", "extraPoisha": 5000 }
+      ],
+      "groupIds": ["milk", "shots", "syrup"]
+    },
+    {
+      "id": "iced_tea", "name": "Iced Tea", "category": "BEVERAGE", "basePricePoisha": 12000,
+      "sizes": [
+        { "id": "regular", "name": "Regular", "extraPoisha": 0 },
+        { "id": "large", "name": "Large", "extraPoisha": 3000 }
+      ],
+      "groupIds": ["syrup"]
+    },
+    { "id": "chicken_sandwich", "name": "Chicken Sandwich", "category": "FOOD", "basePricePoisha": 32000 },
+    { "id": "veg_wrap", "name": "Veg Wrap", "category": "FOOD", "basePricePoisha": 26000 },
+    { "id": "croissant", "name": "Croissant", "category": "BAKERY", "basePricePoisha": 15000 },
+    { "id": "brownie", "name": "Brownie", "category": "BAKERY", "basePricePoisha": 12000 }
+  ],
+  "groups": [
+    {
+      "id": "milk", "name": "Milk", "max": 1,
+      "options": [
+        { "id": "oat", "name": "Oat", "pricePoisha": 6000 },
+        { "id": "almond", "name": "Almond", "pricePoisha": 7000 }
+      ]
+    },
+    {
+      "id": "shots", "name": "Shots", "max": 2,
+      "options": [
+        { "id": "extra_shot", "name": "Extra shot", "pricePoisha": 5000 }
+      ]
+    },
+    {
+      "id": "syrup", "name": "Syrup", "maxDistinct": 2, "maxPerOption": 1,
+      "options": [
+        { "id": "vanilla", "name": "Vanilla", "pricePoisha": 3000 },
+        { "id": "caramel", "name": "Caramel", "pricePoisha": 3000 },
+        { "id": "hazelnut", "name": "Hazelnut", "pricePoisha": 3500 }
+      ]
+    }
+  ],
+  "rules": [
+    { "id": "R1", "type": "requires", "optionId": "hazelnut", "anyOf": ["oat", "almond"] },
+    { "id": "R2", "type": "excludes", "optionId": "almond", "others": ["caramel"] }
+  ],
+  "promotions": [
+    { "id": "P1", "type": "cheapest_free", "category": "BAKERY", "every": 3 },
+    { "id": "P2", "type": "happy_hour", "category": "BEVERAGE", "percentBps": 1000, "from": "15:00", "until": "17:00" }
+  ],
+  "orderDiscounts": [
+    { "id": "T1", "type": "threshold", "minSubtotalPoisha": 100000, "amountOffPoisha": 8000 },
+    {
+      "id": "C1", "type": "coupon", "code": "DEVS10", "percentBps": 1000, "capPoisha": 12000,
+      "validUntil": "2026-12-01T00:00:00+06:00"
+    }
+  ]
+}
