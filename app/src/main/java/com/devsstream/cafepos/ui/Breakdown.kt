@@ -23,13 +23,15 @@ data class BreakdownRow(
     val amount: String = "",
     val strong: Boolean = false,
     val lineAbove: Boolean = false,
+    // money taken off, shown in green
+    val saving: Boolean = false,
 )
 
 fun priceRows(price: PriceBreakdown, catalog: Catalog?, coupon: String?): List<BreakdownRow> = buildList {
     price.lines.forEach { add(BreakdownRow("${it.quantity} × ${it.label}", taka(it.total))) }
-    price.promotions.forEach { add(BreakdownRow(adjustmentName(it.id, catalog), "−" + taka(it.amount))) }
+    price.promotions.forEach { add(BreakdownRow(adjustmentName(it.id, catalog), "−" + taka(it.amount), saving = true)) }
     add(BreakdownRow("Subtotal", taka(price.subtotal), strong = true, lineAbove = true))
-    price.discount?.let { add(BreakdownRow(adjustmentName(it.id, catalog), "−" + taka(it.amount))) }
+    price.discount?.let { add(BreakdownRow(adjustmentName(it.id, catalog), "−" + taka(it.amount), saving = true)) }
     rejectionText(price.couponRejection, coupon)?.let { add(BreakdownRow(it)) }
     add(BreakdownRow("VAT", taka(price.vat)))
     add(BreakdownRow("Total", taka(price.total)))
@@ -40,9 +42,9 @@ fun priceRows(price: PriceBreakdown, catalog: Catalog?, coupon: String?): List<B
 fun orderRows(details: OrderWithDetails, catalog: Catalog?): List<BreakdownRow> = buildList {
     val order = details.order
     details.lines.sortedBy { it.id }.forEach { add(BreakdownRow("${it.quantity} × ${it.label}", taka(it.total))) }
-    order.promotions.forEach { (id, amount) -> add(BreakdownRow(adjustmentName(id, catalog), "−" + taka(amount))) }
+    order.promotions.forEach { (id, amount) -> add(BreakdownRow(adjustmentName(id, catalog), "−" + taka(amount), saving = true)) }
     add(BreakdownRow("Subtotal", taka(order.subtotal), strong = true, lineAbove = true))
-    order.discountId?.let { add(BreakdownRow(adjustmentName(it, catalog), "−" + taka(order.discountAmount))) }
+    order.discountId?.let { add(BreakdownRow(adjustmentName(it, catalog), "−" + taka(order.discountAmount), saving = true)) }
     rejectionText(order.couponRejection, order.coupon)?.let { add(BreakdownRow(it)) }
     add(BreakdownRow("VAT", taka(order.vat)))
     add(BreakdownRow("Total", taka(order.total)))
@@ -59,12 +61,17 @@ private fun rejectionText(rejection: CouponRejection?, coupon: String?): String?
 fun Breakdown(rows: List<BreakdownRow>, modifier: Modifier = Modifier) {
     Column(modifier) {
         rows.forEach { row ->
-            if (row.lineAbove) HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+            if (row.lineAbove) HorizontalDivider(Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                 val weight = if (row.strong) FontWeight.Bold else FontWeight.Normal
-                Text(row.label, Modifier.weight(1f), fontWeight = weight, style = MaterialTheme.typography.bodyMedium)
+                val colour = when {
+                    row.saving -> MaterialTheme.colorScheme.tertiary
+                    row.amount.isEmpty() -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                }
+                Text(row.label, Modifier.weight(1f), fontWeight = weight, color = colour, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.width(8.dp))
-                Text(row.amount, fontWeight = weight, style = MaterialTheme.typography.bodyMedium)
+                Text(row.amount, fontWeight = weight, color = colour, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

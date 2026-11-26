@@ -1,15 +1,23 @@
 package com.devsstream.cafepos.ui.orders
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ListItem
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -20,6 +28,8 @@ import com.devsstream.cafepos.data.OrderRepository
 import com.devsstream.cafepos.data.local.OrderStatus
 import com.devsstream.cafepos.data.local.OrderWithDetails
 import com.devsstream.cafepos.data.sync.SyncScheduler
+import com.devsstream.cafepos.ui.OrderStatusPill
+import com.devsstream.cafepos.ui.Pill
 import com.devsstream.cafepos.ui.PosScaffold
 import com.devsstream.cafepos.ui.StatusUi
 import com.devsstream.cafepos.ui.formatTime
@@ -52,33 +62,56 @@ class OrdersViewModel @Inject constructor(
 }
 
 @Composable
-fun OrdersScreen(status: StatusUi, onOpen: (Long) -> Unit, onBack: () -> Unit, vm: OrdersViewModel = hiltViewModel()) {
+fun OrdersScreen(
+    status: StatusUi,
+    tabs: @Composable () -> Unit,
+    onOpen: (Long) -> Unit,
+    vm: OrdersViewModel = hiltViewModel(),
+) {
     val list by vm.list.collectAsStateWithLifecycle()
+    val c = MaterialTheme.colorScheme
 
-    PosScaffold(title = "Orders", status = status, onBack = onBack) { padding ->
+    PosScaffold(title = "Orders", status = status, bottomBar = tabs) { padding ->
         if (list.isEmpty()) {
             Text("No orders yet.", Modifier.padding(padding).padding(16.dp))
             return@PosScaffold
         }
-        LazyColumn(contentPadding = padding) {
+        LazyColumn(
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             items(list, key = { it.order.id }) { details ->
                 val order = details.order
                 val failed = order.status == OrderStatus.FAILED
-                val time = status.zone?.let { formatTime(Instant.ofEpochMilli(order.createdAt), it) }.orEmpty()
-                ListItem(
-                    headlineContent = { Text("${order.receiptNo} · ${taka(order.payable)}") },
-                    overlineContent = { Text(time + if (order.timeConfirmed) "" else " · time not confirmed") },
-                    supportingContent = {
+                Card(
+                    onClick = { onOpen(order.id) },
+                    colors = CardDefaults.cardColors(containerColor = c.surfaceContainerLowest),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(order.receiptNo, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(taka(order.payable), style = MaterialTheme.typography.titleMedium, color = c.primary)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OrderStatusPill(order.status)
+                            if (!order.timeConfirmed) Pill("Time not confirmed", c.errorContainer, c.onErrorContainer, Icons.Filled.Warning)
+                        }
+                        val time = status.zone?.let { formatTime(Instant.ofEpochMilli(order.createdAt), it) }.orEmpty()
+                        val items = details.lines.sumOf { it.quantity }
                         Text(
-                            syncText(order),
-                            color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            "$time · $items ${if (items == 1) "item" else "items"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.onSurfaceVariant,
                         )
-                    },
-                    trailingContent = {
-                        if (failed) TextButton(onClick = { vm.retry(order.id) }) { Text("Retry") }
-                    },
-                    modifier = Modifier.clickable { onOpen(order.id) },
-                )
+                        if (order.status == OrderStatus.PENDING && order.syncAttempts > 0 || failed) {
+                            Text(syncText(order), style = MaterialTheme.typography.bodySmall, color = if (failed) c.error else c.onSurfaceVariant)
+                        }
+                        if (failed) {
+                            FilledTonalButton(onClick = { vm.retry(order.id) }, modifier = Modifier.fillMaxWidth()) { Text("Retry") }
+                        }
+                    }
+                }
             }
         }
     }

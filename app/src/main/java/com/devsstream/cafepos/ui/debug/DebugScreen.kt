@@ -4,13 +4,17 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -109,40 +113,63 @@ class DebugViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DebugScreen(status: StatusUi, onBack: () -> Unit, vm: DebugViewModel = hiltViewModel()) {
+fun DebugScreen(status: StatusUi, tabs: @Composable () -> Unit, vm: DebugViewModel = hiltViewModel()) {
     val ui by vm.state.collectAsStateWithLifecycle()
+    val c = MaterialTheme.colorScheme
 
-    PosScaffold(title = "Fake server", status = status, onBack = onBack) { padding ->
+    PosScaffold(title = "Fake server", status = status, bottomBar = tabs) { padding ->
         Column(
-            Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            Modifier.padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ui.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-            Text("Server clock: ${ui.serverTime?.let { formatTime(it, vm.zone) } ?: "-"}")
-            Text("Orders on the server: ${ui.serverOrders}")
-
-            Text("Failures", style = MaterialTheme.typography.titleSmall)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Failures.entries.forEach { mode ->
-                    FilterChip(selected = ui.failures == mode, onClick = { vm.setFailures(mode) }, label = { Text(mode.name) })
+            ui.message?.let {
+                Surface(color = c.tertiaryContainer, contentColor = c.onTertiaryContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+                    Text(it, Modifier.padding(12.dp))
                 }
             }
-            Text(
-                "RANDOM is Appendix C (20% dropped, 10% saved then 500). For a real \"no network\", turn on airplane mode.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Section("Server", "Appendix C test hooks. The server lives inside the app.") {
+                Text("Clock: ${ui.serverTime?.let { formatTime(it, vm.zone) } ?: "-"}")
+                Text("Orders received: ${ui.serverOrders}")
+            }
+            Section("Failures", "RANDOM is Appendix C: 20% dropped, 10% saved then HTTP 500. For a real no-network test, use airplane mode.") {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Failures.entries.forEach { mode ->
+                        FilterChip(selected = ui.failures == mode, onClick = { vm.setFailures(mode) }, label = { Text(mode.name) })
+                    }
+                }
+            }
+            Section("Server time", "Jump to the section 8 times. The app's clock follows on the next reply.") {
+                FilledTonalButton(onClick = { vm.setServerTime(LocalDateTime.of(2026, 11, 20, 15, 30)) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("20 Nov 15:30, happy hour")
+                }
+                FilledTonalButton(onClick = { vm.setServerTime(LocalDateTime.of(2026, 11, 20, 17, 0)) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("20 Nov 17:00, after happy hour")
+                }
+                FilledTonalButton(onClick = { vm.setServerTime(LocalDateTime.of(2026, 12, 1, 15, 30)) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("1 Dec 15:30, coupon expired")
+                }
+            }
+            Section("Catalog and sync", null) {
+                FilledTonalButton(onClick = vm::bumpCatalog, modifier = Modifier.fillMaxWidth()) { Text("Bump catalog (Latte base 240)") }
+                OutlinedButton(onClick = vm::refreshCatalog, modifier = Modifier.fillMaxWidth()) { Text("Refresh menu now") }
+                OutlinedButton(onClick = vm::syncNow, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) { Text("Sync now") }
+            }
+        }
+    }
+}
 
-            Text("Server time (section 8 times)", style = MaterialTheme.typography.titleSmall)
-            OutlinedButton(onClick = { vm.setServerTime(LocalDateTime.of(2026, 11, 20, 15, 30)) }) { Text("20 Nov 15:30, happy hour") }
-            OutlinedButton(onClick = { vm.setServerTime(LocalDateTime.of(2026, 11, 20, 17, 0)) }) { Text("20 Nov 17:00, after happy hour") }
-            OutlinedButton(onClick = { vm.setServerTime(LocalDateTime.of(2026, 12, 1, 15, 30)) }) { Text("1 Dec 15:30, coupon expired") }
-
-            Text("Catalog and sync", style = MaterialTheme.typography.titleSmall)
-            OutlinedButton(onClick = vm::bumpCatalog) { Text("Bump catalog (Latte base 240)") }
-            OutlinedButton(onClick = vm::refreshCatalog) { Text("Refresh menu now") }
-            OutlinedButton(onClick = vm::syncNow) { Text("Sync now") }
+@Composable
+private fun Section(title: String, hint: String?, content: @Composable () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
         }
     }
 }

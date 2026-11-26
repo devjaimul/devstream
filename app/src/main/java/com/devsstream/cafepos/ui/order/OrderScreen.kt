@@ -2,16 +2,23 @@ package com.devsstream.cafepos.ui.order
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -27,9 +35,13 @@ import com.devsstream.cafepos.data.local.OrderStatus
 import com.devsstream.cafepos.data.local.OrderWithDetails
 import com.devsstream.cafepos.data.local.PaymentStatus
 import com.devsstream.cafepos.data.remote.PaymentType
+import com.devsstream.cafepos.ui.BigButton
 import com.devsstream.cafepos.ui.Breakdown
+import com.devsstream.cafepos.ui.OrderStatusPill
+import com.devsstream.cafepos.ui.Pill
 import com.devsstream.cafepos.ui.PosScaffold
 import com.devsstream.cafepos.ui.StatusUi
+import com.devsstream.cafepos.ui.cart.ChangeCard
 import com.devsstream.cafepos.ui.cart.TakaField
 import com.devsstream.cafepos.ui.formatTime
 import com.devsstream.cafepos.ui.orderRows
@@ -41,60 +53,67 @@ import java.time.Instant
 fun OrderScreen(status: StatusUi, onDone: () -> Unit, vm: OrderViewModel = hiltViewModel()) {
     val ui by vm.state.collectAsStateWithLifecycle()
     val details = ui.details
+    val c = MaterialTheme.colorScheme
 
     PosScaffold(title = details?.order?.receiptNo ?: "Order", status = status, onBack = onDone) { padding ->
         Column(
-            Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (details == null) {
                 Text("Loading…")
                 return@Column
             }
-            ui.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            ui.message?.let { Text(it, color = c.error) }
+
             when (val step = ui.step) {
-                PaymentStep.WaitingForCard -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.padding(end = 12.dp))
-                    Text("Waiting for the card terminal… (asks the terminal after 15 s)")
+                PaymentStep.WaitingForCard -> Hero(c.secondaryContainer, c.onSecondaryContainer) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(32.dp), color = c.secondary)
+                        Column(Modifier.padding(start = 16.dp)) {
+                            Text("Waiting for the card terminal", style = MaterialTheme.typography.titleMedium)
+                            Text("If it doesn't answer in 15 s, the app asks the terminal", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
 
-                is PaymentStep.CheckingCard -> Column {
-                    Text("Checking the last card with the terminal…")
+                is PaymentStep.CheckingCard -> Hero(c.secondaryContainer, c.onSecondaryContainer) {
+                    Text("Checking the last card with the terminal…", style = MaterialTheme.typography.titleMedium)
                     OutlinedButton(onClick = { vm.checkAgain(step.ref) }) { Text("Check again") }
                 }
 
-                is PaymentStep.CardUnknown -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Card result unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+                is PaymentStep.CardUnknown -> Hero(c.errorContainer, c.onErrorContainer) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Warning, contentDescription = null)
+                        Text("Card result unknown", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+                    }
                     Text("Don't charge again until you know. Look at the terminal or its slip.")
-                    Button(onClick = { vm.checkAgain(step.ref) }) { Text("Check again") }
-                    OutlinedButton(onClick = { vm.notCharged(step.ref) }) { Text("Not charged, try again") }
+                    BigButton("Check again", onClick = { vm.checkAgain(step.ref) })
+                    OutlinedButton(onClick = { vm.notCharged(step.ref) }, modifier = Modifier.fillMaxWidth()) { Text("Not charged, try again") }
                 }
 
                 is PaymentStep.Due -> Due(step, details, vm)
 
                 PaymentStep.Paid -> Paid(details, vm, onDone)
 
-                PaymentStep.Cancelled -> Column {
-                    Text("Cancelled", style = MaterialTheme.typography.titleMedium)
-                    Button(onClick = onDone) { Text("Back to menu") }
+                PaymentStep.Cancelled -> Hero(c.surfaceVariant, c.onSurfaceVariant) {
+                    Text("Cancelled", style = MaterialTheme.typography.headlineSmall)
+                    Text("Kept for the record, never sent to the server.")
+                    BigButton("Back to menu", onClick = onDone)
                 }
 
                 null -> Unit
             }
 
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    val zone = ui.catalog?.timeZone ?: status.zone
-                    val time = Instant.ofEpochMilli(details.order.createdAt)
-                    Text(if (zone != null) formatTime(time, zone) else time.toString(), style = MaterialTheme.typography.bodySmall)
-                    if (!details.order.timeConfirmed) {
-                        Text("Time not confirmed", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Breakdown(orderRows(details, ui.catalog), Modifier.padding(top = 8.dp))
-                    Payments(details)
-                }
-            }
+            Receipt(details, ui.catalog?.timeZone ?: status.zone, ui)
         }
+    }
+}
+
+@Composable
+private fun Hero(container: Color, content: Color, body: @Composable ColumnScope.() -> Unit) {
+    Surface(color = container, contentColor = content, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = body)
     }
 }
 
@@ -103,57 +122,99 @@ private fun Due(step: PaymentStep.Due, details: OrderWithDetails, vm: OrderViewM
     var tenderedText by rememberSaveable { mutableStateOf("") }
     val tendered = parseTaka(tenderedText)
     val nothingTaken = details.payments.none { it.status == PaymentStatus.APPROVED }
+    val c = MaterialTheme.colorScheme
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Hero(c.surfaceContainerLowest, c.onSurface) {
         val last = step.lastCard
         when (last?.status) {
-            PaymentStatus.DECLINED -> Text("Card declined" + (last.declineReason?.let { ": $it" } ?: ""), color = MaterialTheme.colorScheme.error)
-            PaymentStatus.VOIDED -> Text("Last card attempt marked as not charged", color = MaterialTheme.colorScheme.error)
-            PaymentStatus.APPROVED -> Text("Card part approved")
+            PaymentStatus.DECLINED -> Pill("Card declined" + (last.declineReason?.let { ": $it" } ?: ""), c.errorContainer, c.onErrorContainer)
+            PaymentStatus.VOIDED -> Pill("Last card marked as not charged", c.errorContainer, c.onErrorContainer)
+            PaymentStatus.APPROVED -> Pill("Card part approved", c.tertiaryContainer, c.onTertiaryContainer, Icons.Filled.CheckCircle)
             else -> Unit
         }
-        Text("Due ${taka(step.amount)}", style = MaterialTheme.typography.headlineSmall)
+        Text("Still to pay", style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+        Text(taka(step.amount), style = MaterialTheme.typography.displaySmall)
 
-        Button(onClick = { vm.anotherCard(step.amount) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Card for ${taka(step.amount)}")
-        }
+        BigButton("Card for ${taka(step.amount)}", onClick = { vm.anotherCard(step.amount) })
         TakaField("Cash tendered", tenderedText) { tenderedText = it }
-        if (tendered != null && tendered >= step.amount) Text("Change ${taka(tendered - step.amount)}")
-        Button(
+        if (tendered != null && tendered >= step.amount) ChangeCard(tendered - step.amount)
+        OutlinedButton(
             onClick = { vm.payRestInCash(tendered!!) },
             enabled = tendered != null && tendered >= step.amount,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Take cash for ${taka(step.amount)}") }
 
         if (nothingTaken) {
-            OutlinedButton(onClick = vm::cancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel sale") }
+            OutlinedButton(onClick = vm::cancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel sale", color = c.error) }
         }
     }
 }
 
 @Composable
 private fun Paid(details: OrderWithDetails, vm: OrderViewModel, onDone: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Done", style = MaterialTheme.typography.headlineSmall)
-        details.payments.lastOrNull { it.type == PaymentType.CASH && it.status == PaymentStatus.APPROVED }?.change?.let {
-            if (it > 0) Text("Change ${taka(it)}", style = MaterialTheme.typography.titleMedium)
+    val c = MaterialTheme.colorScheme
+    val failed = details.order.status == OrderStatus.FAILED
+    Hero(c.tertiaryContainer, c.onTertiaryContainer) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, Modifier.size(32.dp))
+            Text("Done", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 12.dp))
         }
-        val failed = details.order.status == OrderStatus.FAILED
-        Text(syncText(details.order), color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+        details.payments.lastOrNull { it.type == PaymentType.CASH && it.status == PaymentStatus.APPROVED }?.change?.let {
+            if (it > 0) Text("Give back ${taka(it)} change", style = MaterialTheme.typography.titleLarge)
+        }
+        Text(syncText(details.order), color = if (failed) c.error else c.onTertiaryContainer)
         if (failed) OutlinedButton(onClick = vm::retrySync) { Text("Retry") }
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("New sale") }
+        BigButton("New sale", onClick = onDone)
     }
 }
 
 @Composable
-private fun Payments(details: OrderWithDetails) {
-    if (details.payments.isEmpty()) return
-    Text("Payments", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-    details.payments.sortedBy { it.id }.forEach { p ->
-        val extra = when (p.type) {
-            PaymentType.CASH -> "tendered ${taka(p.tendered ?: 0)}, change ${taka(p.change ?: 0)}"
-            PaymentType.CARD -> listOfNotNull(p.authCode, p.declineReason).joinToString(" ")
+private fun Receipt(details: OrderWithDetails, zone: java.time.ZoneId?, ui: OrderUi) {
+    val c = MaterialTheme.colorScheme
+    val order = details.order
+    Card(
+        colors = CardDefaults.cardColors(containerColor = c.surfaceContainerLowest),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(order.receiptNo, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                OrderStatusPill(order.status)
+            }
+            val time = Instant.ofEpochMilli(order.createdAt)
+            Text(if (zone != null) formatTime(time, zone) else time.toString(), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+            if (!order.timeConfirmed) Pill("Time not confirmed", c.errorContainer, c.onErrorContainer, Icons.Filled.Warning)
+            Breakdown(orderRows(details, ui.catalog), Modifier.padding(top = 8.dp))
+
+            if (details.payments.isNotEmpty()) {
+                Text("Payments", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+                details.payments.sortedBy { it.id }.forEach { p ->
+                    val extra = when (p.type) {
+                        PaymentType.CASH -> "tendered ${taka(p.tendered ?: 0)}, change ${taka(p.change ?: 0)}"
+                        PaymentType.CARD -> listOfNotNull(p.authCode, p.declineReason).joinToString(" ")
+                    }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${p.type} ${taka(p.amount)}", style = MaterialTheme.typography.bodyMedium)
+                            if (extra.isNotBlank()) Text(extra, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                        }
+                        PaymentPill(p.status)
+                    }
+                }
+            }
         }
-        Text("${p.type} ${taka(p.amount)} · ${p.status} $extra", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun PaymentPill(status: PaymentStatus) {
+    val c = MaterialTheme.colorScheme
+    when (status) {
+        PaymentStatus.APPROVED -> Pill("Approved", c.tertiaryContainer, c.onTertiaryContainer)
+        PaymentStatus.PENDING -> Pill("Waiting", c.secondaryContainer, c.onSecondaryContainer)
+        PaymentStatus.UNKNOWN -> Pill("Unknown", c.errorContainer, c.onErrorContainer)
+        PaymentStatus.DECLINED -> Pill("Declined", c.errorContainer, c.onErrorContainer)
+        PaymentStatus.VOIDED -> Pill("Not charged", c.surfaceVariant, c.onSurfaceVariant)
     }
 }
