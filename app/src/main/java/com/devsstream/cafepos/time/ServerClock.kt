@@ -1,5 +1,8 @@
 package com.devsstream.cafepos.time
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.time.Instant
 
 data class TimeAnchor(
@@ -55,5 +58,13 @@ class ServerClock(
         val boots = bootCount()
         if (boots != null && a.bootCount != null) return boots == a.bootCount
         return elapsedMs() >= a.elapsedMs
+    }
+}
+
+// server time once a second, for screens (prices change at 17:00 without a tap)
+fun ServerClock.ticks(): Flow<ServerNow> = flow {
+    while (true) {
+        emit(now())
+        delay(1_000)
     }
 }

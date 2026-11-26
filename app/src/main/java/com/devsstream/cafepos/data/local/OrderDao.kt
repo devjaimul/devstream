@@ -62,4 +62,7 @@ interface OrderDao {
     @Transaction
     @Query("SELECT * FROM orders ORDER BY id DESC")
     fun observeAll(): Flow<List<OrderWithDetails>>
+
+    @Query("SELECT COUNT(*) FROM orders WHERE status IN (:statuses)")
+    fun observeCount(statuses: Set<OrderStatus>): Flow<Int>
 }

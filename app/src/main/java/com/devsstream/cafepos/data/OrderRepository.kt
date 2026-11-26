@@ -46,6 +46,9 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
 
     suspend fun order(id: Long): OrderWithDetails? = dao.details(id)
 
+    // paid but not on the server: waiting to go, or given up and waiting for Retry
+    fun observeNotSyncedCount(): Flow<Int> = dao.observeCount(setOf(OrderStatus.PENDING, OrderStatus.FAILED))
+
     // Order, lines, first payments and the receipt number in one transaction.
     // `now` must be the same server time the order was priced at.
     suspend fun createOrder(
