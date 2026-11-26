@@ -87,7 +87,11 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    // AnswersTest reads it, so editing it must run the tests again
+    inputs.file(rootProject.file("ANSWERS.md"))
     testLogging {
         events("passed", "failed", "skipped")
+        // -Panswers prints what AnswersTest works out
+        showStandardStreams = providers.gradleProperty("answers").isPresent
     }
 }
