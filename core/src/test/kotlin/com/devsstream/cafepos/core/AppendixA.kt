@@ -8,6 +8,7 @@ import com.devsstream.cafepos.core.catalog.OrderDiscount
 import com.devsstream.cafepos.core.catalog.Product
 import com.devsstream.cafepos.core.catalog.Promotion
 import com.devsstream.cafepos.core.catalog.Size
+import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -20,6 +21,9 @@ private fun regularLarge(largeExtra: Int) = listOf(
 )
 
 val dhaka: ZoneId = ZoneId.of("Asia/Dhaka")
+
+fun dhakaTime(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int = 0): Instant =
+    ZonedDateTime.of(year, month, day, hour, minute, second, 0, dhaka).toInstant()
 
 // Catalog from Appendix A of the brief. Tests are pinned to these numbers.
 val appendixA = Catalog(
