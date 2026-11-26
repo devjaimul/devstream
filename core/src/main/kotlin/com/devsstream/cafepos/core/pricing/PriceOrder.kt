@@ -87,9 +87,11 @@ fun priceOrder(
     }
     if (code != null && !couponFound) rejection = CouponRejection.UNKNOWN
 
-    // only one discount applies. maxByOrNull keeps the first one on a tie,
-    // so catalog order decides ties (T1 is listed before C1)
-    val discount = candidates.filter { it.amount > 0 }.maxByOrNull { it.amount }
+    // only one discount applies, the larger. On a tie the threshold one (T1) wins,
+    // whatever order the catalog lists them in
+    val thresholds = catalog.orderDiscounts.filterIsInstance<OrderDiscount.Threshold>().map { it.id }.toSet()
+    val discount = candidates.filter { it.amount > 0 }
+        .maxWithOrNull(compareBy<Adjustment> { it.amount }.thenBy { it.id in thresholds })
 
     val discounted = subtotal - (discount?.amount ?: 0)
     val vat = percentOf(discounted, catalog.vatBps)

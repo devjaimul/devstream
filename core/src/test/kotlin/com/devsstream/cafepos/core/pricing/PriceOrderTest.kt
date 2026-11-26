@@ -166,6 +166,10 @@ class PriceOrderTest {
 
         assertEquals(bdt(800), p.subtotal)
         assertEquals(Adjustment("T1", bdt(80)), p.discount)
+
+        // a catalog that lists the coupon first still gives the tie to T1
+        val couponFirst = catalog.copy(orderDiscounts = catalog.orderDiscounts.reversed())
+        assertEquals(Adjustment("T1", bdt(80)), priceOrder(lines, couponFirst, "DEVS10", dhakaTime(2026, 11, 20, 10, 0)).discount)
     }
 
     @Test
