@@ -40,6 +40,9 @@ interface OrderDao {
     @Query("SELECT * FROM payments WHERE orderId = :orderId ORDER BY id")
     suspend fun payments(orderId: Long): List<PaymentEntity>
 
+    @Query("SELECT * FROM payments WHERE status IN (:statuses) ORDER BY id")
+    suspend fun paymentsWithStatus(statuses: Set<PaymentStatus>): List<PaymentEntity>
+
     @Transaction
     @Query("SELECT * FROM orders WHERE id = :id")
     suspend fun details(id: Long): OrderWithDetails?

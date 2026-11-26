@@ -88,4 +88,13 @@ data class OrderWithDetails(
     val lines: List<OrderLineEntity>,
     @Relation(parentColumn = "id", entityColumn = "orderId")
     val payments: List<PaymentEntity>,
-)
+) {
+    val paid: Long get() = payments.filter { it.status == PaymentStatus.APPROVED }.sumOf { it.amount }
+
+    val due: Long get() = (order.payable - paid).coerceAtLeast(0)
+
+    // a card attempt still waiting for its result, or with a result nobody knows
+    val openCard: PaymentEntity? get() = payments.find { it.status in OPEN_CARD }
+}
+
+val OPEN_CARD = setOf(PaymentStatus.PENDING, PaymentStatus.UNKNOWN)

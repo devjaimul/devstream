@@ -202,4 +202,42 @@ class OrderRepositoryTest {
         assertTrue(repo.observeOrders().first().isEmpty())
         assertEquals("T1-20261120-0001", repo.tc06Sale().order.receiptNo)
     }
+
+    @Test
+    fun `payments can't add up to more than the payable`() = runBlocking {
+        val tooMuch = runCatching { repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(1200)))) }.exceptionOrNull()
+        assertTrue(tooMuch is IllegalArgumentException)
+
+        val saved = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(600))))
+        repo.finishCardPayment(saved.payments.single().cardRef!!, CardResult.Approved("AUTH-4"))
+        val overDue = runCatching { repo.addPayment(saved.order.id, NewPayment.Cash(bdt(600), bdt(600))) }.exceptionOrNull()
+
+        assertTrue(overDue is IllegalArgumentException)
+        assertEquals(1, repo.order(saved.order.id)!!.payments.size)
+    }
+
+    @Test
+    fun `a late or repeated answer can't change a settled card`() = runBlocking {
+        val saved = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(1094))))
+        val ref = saved.payments.single().cardRef!!
+        repo.finishCardPayment(ref, CardResult.Approved("AUTH-5"))
+
+        repo.finishCardPayment(ref, CardResult.Declined("LATE"))
+        repo.finishCardPayment(ref, CardResult.Unknown)
+
+        val card = repo.order(saved.order.id)!!.payments.single()
+        assertEquals(PaymentStatus.APPROVED, card.status)
+        assertEquals("AUTH-5", card.authCode)
+        assertEquals(OrderStatus.PENDING, repo.order(saved.order.id)!!.order.status)
+    }
+
+    @Test
+    fun `only an open card can be voided`() = runBlocking {
+        val saved = repo.tc06Sale(payments = listOf(NewPayment.Card(bdt(1094))))
+        val ref = saved.payments.single().cardRef!!
+        repo.finishCardPayment(ref, CardResult.Approved("AUTH-6"))
+
+        assertTrue(runCatching { repo.voidCardPayment(ref) }.exceptionOrNull() is IllegalStateException)
+        assertEquals(PaymentStatus.APPROVED, repo.order(saved.order.id)!!.payments.single().status)
+    }
 }

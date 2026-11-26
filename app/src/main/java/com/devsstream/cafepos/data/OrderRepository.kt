@@ -9,6 +9,7 @@ import com.devsstream.cafepos.core.time.businessDay
 import com.devsstream.cafepos.data.local.OrderEntity
 import com.devsstream.cafepos.data.local.OrderLineEntity
 import com.devsstream.cafepos.data.local.OrderStatus
+import com.devsstream.cafepos.data.local.OPEN_CARD
 import com.devsstream.cafepos.data.local.OrderWithDetails
 import com.devsstream.cafepos.data.local.PaymentEntity
 import com.devsstream.cafepos.data.local.PaymentStatus
@@ -56,6 +57,7 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
         payments: List<NewPayment> = emptyList(),
     ): OrderWithDetails = db.withTransaction {
         require(lines.size == price.lines.size) { "lines and priced lines don't match" }
+        require(payments.sumOf { it.amount } <= price.payable) { "payments are more than the payable" }
 
         val day = now.time.businessDay(catalog.timeZone)
         val seq = (dao.lastReceiptSeq(day.toString()) ?: 0) + 1
@@ -100,25 +102,41 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
         checkNotNull(dao.details(orderId))
     }
 
+    // Checked inside the transaction, so two taps at once can't both get through (D4).
     suspend fun addPayment(orderId: Long, payment: NewPayment): PaymentEntity = db.withTransaction {
-        val order = checkNotNull(dao.order(orderId)) { "no order $orderId" }
-        check(order.status == OrderStatus.PAYING) { "order $orderId is ${order.status}, not taking payments" }
+        val order = checkNotNull(dao.details(orderId)) { "no order $orderId" }
+        check(order.order.status == OrderStatus.PAYING) { "order $orderId is ${order.order.status}, not taking payments" }
+        check(order.openCard == null) { "order $orderId still has a card result open" }
+        require(payment.amount <= order.due) { "${payment.amount} is more than the ${order.due} still due" }
         val id = dao.insert(payment.toEntity(orderId))
         settle(orderId)
         checkNotNull(dao.payment(id))
     }
 
-    suspend fun finishCardPayment(ref: String, result: CardResult) = db.withTransaction {
+    // Returns the order's status after it. A result for a card that is already approved,
+    // declined or voided changes nothing, so a late or repeated answer can't undo it.
+    suspend fun finishCardPayment(ref: String, result: CardResult): OrderStatus = db.withTransaction {
         val payment = checkNotNull(dao.paymentByRef(ref)) { "no payment with ref $ref" }
-        dao.update(
-            when (result) {
-                is CardResult.Approved -> payment.copy(status = PaymentStatus.APPROVED, authCode = result.authCode)
-                is CardResult.Declined -> payment.copy(status = PaymentStatus.DECLINED, declineReason = result.reason)
-                CardResult.Unknown -> payment.copy(status = PaymentStatus.UNKNOWN)
-            }
-        )
+        if (payment.status in OPEN_CARD) {
+            dao.update(
+                when (result) {
+                    is CardResult.Approved -> payment.copy(status = PaymentStatus.APPROVED, authCode = result.authCode)
+                    is CardResult.Declined -> payment.copy(status = PaymentStatus.DECLINED, declineReason = result.reason)
+                    CardResult.Unknown -> payment.copy(status = PaymentStatus.UNKNOWN)
+                }
+            )
+        }
         settle(payment.orderId)
     }
+
+    // "Not charged, try again", after the terminal said it doesn't know the ref
+    suspend fun voidCardPayment(ref: String) = db.withTransaction {
+        val payment = checkNotNull(dao.paymentByRef(ref)) { "no payment with ref $ref" }
+        check(payment.status in OPEN_CARD) { "card $ref is ${payment.status}, can't void it" }
+        dao.update(payment.copy(status = PaymentStatus.VOIDED))
+    }
+
+    suspend fun openCardPayments(): List<PaymentEntity> = dao.paymentsWithStatus(OPEN_CARD)
 
     // Only an unpaid order with nothing taken and no card result still open.
     suspend fun cancel(orderId: Long): Boolean = db.withTransaction {
@@ -159,11 +177,13 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
     }
 
     // PAYING becomes PENDING (paid) once approved payments cover the payable
-    private suspend fun settle(orderId: Long) {
+    private suspend fun settle(orderId: Long): OrderStatus {
         val order = checkNotNull(dao.order(orderId))
-        if (order.status != OrderStatus.PAYING) return
+        if (order.status != OrderStatus.PAYING) return order.status
         val paid = dao.payments(orderId).filter { it.status == PaymentStatus.APPROVED }.sumOf { it.amount }
-        if (paid >= order.payable) dao.update(order.copy(status = OrderStatus.PENDING))
+        if (paid < order.payable) return order.status
+        dao.update(order.copy(status = OrderStatus.PENDING))
+        return OrderStatus.PENDING
     }
 }
 
