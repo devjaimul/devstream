@@ -23,6 +23,7 @@ data class StatusUi(
     val zone: ZoneId? = null,
     val menuVersion: Int? = null,
     val notSynced: Int = 0,
+    val unfinished: Int = 0,
 )
 
 // What the top bar shows on every screen: server time, menu version, unsynced count.
@@ -34,8 +35,13 @@ class StatusViewModel @Inject constructor(
 ) : ViewModel() {
 
     val status: StateFlow<StatusUi> =
-        combine(clock.ticks(), catalogs.catalog, orders.observeNotSyncedCount()) { now, catalog, notSynced ->
-            StatusUi(now, catalog?.timeZone, catalog?.version, notSynced)
+        combine(
+            clock.ticks(),
+            catalogs.catalog,
+            orders.observeNotSyncedCount(),
+            orders.observeUnfinishedCount(),
+        ) { now, catalog, notSynced, unfinished ->
+            StatusUi(now, catalog?.timeZone, catalog?.version, notSynced, unfinished)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatusUi())
 
     init {

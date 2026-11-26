@@ -32,14 +32,17 @@ import com.devsstream.cafepos.ui.PosScaffold
 import com.devsstream.cafepos.ui.StatusUi
 import com.devsstream.cafepos.ui.formatTime
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -62,18 +65,19 @@ class DebugViewModel @Inject constructor(
 
     private val failures = MutableStateFlow(server.failures)
     private val message = MutableStateFlow<String?>(null)
+    // reads the server's file, so off the main thread
     private val serverTicks = flow {
         while (true) {
             emit(server.now() to server.orders().size)
             delay(1_000)
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     val state: StateFlow<DebugUi> = combine(failures, serverTicks, message) { f, (time, count), msg ->
         DebugUi(f, time, count, msg)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DebugUi())
 
-    // falls back to Dhaka only if there is no catalog yet
+    // the brief's test times are Dhaka time; the catalog's zone is used once it's here
     val zone: ZoneId get() = catalogs.catalog.value?.timeZone ?: ZoneId.of("Asia/Dhaka")
 
     fun setFailures(mode: Failures) {
@@ -84,14 +88,15 @@ class DebugViewModel @Inject constructor(
     // The app's clock follows on the next server reply, so ask for one straight away.
     fun setServerTime(time: LocalDateTime) {
         viewModelScope.launch {
-            server.setServerTime(time.atZone(zone).toInstant())
+            withContext(Dispatchers.IO) { server.setServerTime(time.atZone(zone).toInstant()) }
             message.value = if (catalogs.refresh()) "Server time set, the app follows it now" else "Server time set, the app follows on the next reply"
         }
     }
 
     fun bumpCatalog() {
         viewModelScope.launch {
-            message.value = if (!server.bumpCatalog()) {
+            val bumped = withContext(Dispatchers.IO) { server.bumpCatalog() }
+            message.value = if (!bumped) {
                 "There is no newer catalog"
             } else if (catalogs.refresh()) {
                 "Catalog bumped, menu updated"
@@ -151,7 +156,7 @@ fun DebugScreen(status: StatusUi, tabs: @Composable () -> Unit, vm: DebugViewMod
                 }
             }
             Section("Catalog and sync", null) {
-                FilledTonalButton(onClick = vm::bumpCatalog, modifier = Modifier.fillMaxWidth()) { Text("Bump catalog (Latte base 240)") }
+                FilledTonalButton(onClick = vm::bumpCatalog, modifier = Modifier.fillMaxWidth()) { Text("Bump catalog to the next version") }
                 OutlinedButton(onClick = vm::refreshCatalog, modifier = Modifier.fillMaxWidth()) { Text("Refresh menu now") }
                 OutlinedButton(onClick = vm::syncNow, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) { Text("Sync now") }
             }

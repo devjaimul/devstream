@@ -41,6 +41,7 @@ fun PosNavHost() {
                 tabs = { tabs(Tab.MENU) },
                 onProduct = { nav.navigate("item/$it") },
                 onCart = { nav.navigate("cart") },
+                onOrders = { nav.openTab(Tab.ORDERS) },
             )
         }
         composable(Tab.ORDERS.route) {

@@ -50,9 +50,6 @@ private val optionsSaver = Saver<Map<String, Int>, ArrayList<String>>(
     restore = { list -> list.associate { it.substringBefore('=') to it.substringAfter('=').toInt() } },
 )
 
-// a soft cap for the + button only, the real limits are checked by validate()
-private const val STEPPER_MAX = 9
-
 // Everything comes from the catalog: sizes, groups, limits and rules. The picker lets the
 // cashier go past a limit on purpose, so validate() can say what's wrong (TC-01 to TC-04).
 @Composable
@@ -149,7 +146,8 @@ fun ItemScreen(
                                     onMinus = { options = options + (option.id to qty - 1) },
                                     onPlus = { options = options + (option.id to qty + 1) },
                                     minusEnabled = qty > 0,
-                                    plusEnabled = qty < STEPPER_MAX,
+                                    // no cap here: going past a limit is allowed, validate() explains it
+                                    plusEnabled = true,
                                 )
                             }
                         }

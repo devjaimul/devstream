@@ -66,6 +66,9 @@ class OrderRepository @Inject constructor(private val db: PosDatabase) {
     // paid but not on the server: waiting to go, or given up and waiting for Retry
     fun observeNotSyncedCount(): Flow<Int> = dao.observeCount(setOf(OrderStatus.PENDING, OrderStatus.FAILED))
 
+    // started but not paid in full, e.g. the app died while a card was open
+    fun observeUnfinishedCount(): Flow<Int> = dao.observeCount(setOf(OrderStatus.PAYING))
+
     // Order, lines, first payments and the receipt number in one transaction.
     // `now` must be the same server time the order was priced at.
     suspend fun createOrder(

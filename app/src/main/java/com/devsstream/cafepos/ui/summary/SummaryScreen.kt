@@ -165,7 +165,7 @@ fun SummaryScreen(status: StatusUi, tabs: @Composable () -> Unit, vm: SummaryVie
                 }
             }
             Text(
-                "Business day in server time (Asia/Dhaka). Orders still being paid, or cancelled, don't count.",
+                "Business day in server time (${ui.catalog?.timeZone ?: "catalog time zone"}). Orders still being paid, or cancelled, don't count.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.onSurfaceVariant,
             )

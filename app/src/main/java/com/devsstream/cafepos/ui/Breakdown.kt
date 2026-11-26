@@ -39,8 +39,10 @@ fun priceRows(price: PriceBreakdown, catalog: Catalog?, coupon: String?): List<B
 }
 
 // the receipt: always the numbers saved at sale time (D5)
-fun orderRows(details: OrderWithDetails, catalog: Catalog?): List<BreakdownRow> = buildList {
+fun orderRows(details: OrderWithDetails, current: Catalog?): List<BreakdownRow> = buildList {
     val order = details.order
+    // descriptions only from the catalog it was sold under, otherwise just the id
+    val catalog = current?.takeIf { it.version == order.catalogVersion }
     details.lines.sortedBy { it.id }.forEach { add(BreakdownRow("${it.quantity} × ${it.label}", taka(it.total))) }
     order.promotions.forEach { (id, amount) -> add(BreakdownRow(adjustmentName(id, catalog), "−" + taka(amount), saving = true)) }
     add(BreakdownRow("Subtotal", taka(order.subtotal), strong = true, lineAbove = true))

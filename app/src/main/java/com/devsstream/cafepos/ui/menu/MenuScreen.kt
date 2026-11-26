@@ -50,6 +50,7 @@ fun MenuScreen(
     tabs: @Composable () -> Unit,
     onProduct: (String) -> Unit,
     onCart: () -> Unit,
+    onOrders: () -> Unit,
 ) {
     var category by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -71,7 +72,13 @@ fun MenuScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 CircularProgressIndicator()
-                Text("Loading the menu from the server…", Modifier.padding(top = 16.dp))
+                Text("Getting the menu from the server…", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "The very first start needs a connection once. After that the till works offline.",
+                    Modifier.padding(32.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             return@PosScaffold
         }
@@ -81,6 +88,7 @@ fun MenuScreen(
         val inCart = ui.cart.lines.groupBy { it.selection.productId }.mapValues { (_, l) -> l.sumOf { it.quantity } }
 
         Column(Modifier.padding(padding)) {
+            if (status.unfinished > 0) UnfinishedBanner(status.unfinished, onOrders)
             Row(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -135,6 +143,25 @@ private fun ProductCard(product: Product, colourIndex: Int, inCart: Int, onClick
                 color = MaterialTheme.colorScheme.primary,
             )
         }
+    }
+}
+
+// A sale that was started but not paid, e.g. the app died during a card payment.
+// Easy to miss after a restart, and ringing it up again could charge twice.
+@Composable
+private fun UnfinishedBanner(count: Int, onOrders: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp).clickable(onClick = onOrders),
+    ) {
+        Text(
+            if (count == 1) "1 sale isn't finished. Open it from Orders before ringing it up again ›"
+            else "$count sales aren't finished. Open them from Orders before ringing them up again ›",
+            Modifier.padding(14.dp),
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 

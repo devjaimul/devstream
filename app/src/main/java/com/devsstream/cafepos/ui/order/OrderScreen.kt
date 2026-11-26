@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,15 +84,7 @@ fun OrderScreen(status: StatusUi, onDone: () -> Unit, vm: OrderViewModel = hiltV
                     OutlinedButton(onClick = { vm.checkAgain(step.ref) }) { Text("Check again") }
                 }
 
-                is PaymentStep.CardUnknown -> Hero(c.errorContainer, c.onErrorContainer) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Warning, contentDescription = null)
-                        Text("Card result unknown", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
-                    }
-                    Text("Don't charge again until you know. Look at the terminal or its slip.")
-                    BigButton("Check again", onClick = { vm.checkAgain(step.ref) })
-                    OutlinedButton(onClick = { vm.notCharged(step.ref) }, modifier = Modifier.fillMaxWidth()) { Text("Not charged, try again") }
-                }
+                is PaymentStep.CardUnknown -> CardUnknown(step.ref, vm)
 
                 is PaymentStep.Due -> Due(step, details, vm)
 
@@ -114,6 +108,34 @@ fun OrderScreen(status: StatusUi, onDone: () -> Unit, vm: OrderViewModel = hiltV
 private fun Hero(container: Color, content: Color, body: @Composable ColumnScope.() -> Unit) {
     Surface(color = container, contentColor = content, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = body)
+    }
+}
+
+@Composable
+private fun CardUnknown(ref: String, vm: OrderViewModel) {
+    val c = MaterialTheme.colorScheme
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    Hero(c.errorContainer, c.onErrorContainer) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Warning, contentDescription = null)
+            Text("Card result unknown", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+        }
+        Text("Don't charge again until you know. Look at the terminal or its slip.")
+        BigButton("Check again", onClick = { vm.checkAgain(ref) })
+        OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Not charged, try again") }
+    }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Mark as not charged?") },
+            text = {
+                Text("Only if the terminal or its slip shows this card was NOT charged. The app asks the terminal once more first. A new attempt is a new charge.")
+            },
+            confirmButton = {
+                TextButton(onClick = { confirm = false; vm.notCharged(ref) }) { Text("Not charged") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Go back") } },
+        )
     }
 }
 
