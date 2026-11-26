@@ -1,9 +1,9 @@
 package com.devsstream.cafepos.data
 
+import com.devsstream.cafepos.MemoryCatalogCache
 import com.devsstream.cafepos.MemoryServerStore
 import com.devsstream.cafepos.core.appendixA
 import com.devsstream.cafepos.core.dhakaTime
-import com.devsstream.cafepos.data.remote.CatalogDto
 import com.devsstream.cafepos.data.remote.fake.Failures
 import com.devsstream.cafepos.data.remote.fake.FakePosServer
 import kotlinx.coroutines.test.runTest
@@ -14,14 +14,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CatalogRepositoryTest {
-
-    private class MemoryCatalogCache : CatalogCache {
-        var saved: CatalogDto? = null
-        override fun load() = saved
-        override fun save(catalog: CatalogDto) {
-            saved = catalog
-        }
-    }
 
     private val cache = MemoryCatalogCache()
     private val server = FakePosServer(
