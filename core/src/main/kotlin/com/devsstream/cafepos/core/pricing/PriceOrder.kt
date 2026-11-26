@@ -107,6 +107,9 @@ fun priceOrder(
     )
 }
 
+// one unit before any promotion, e.g. for the item picker
+fun unitPrice(selection: ItemSelection, catalog: Catalog): Long = priceLine(OrderLine(selection, 1), catalog).unitPrice
+
 private fun priceLine(line: OrderLine, catalog: Catalog): PricedLine {
     require(line.quantity > 0) { "line quantity must be positive" }
     val s = line.selection

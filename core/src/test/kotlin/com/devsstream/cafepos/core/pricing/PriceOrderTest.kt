@@ -19,14 +19,11 @@ class PriceOrderTest {
 
     private val nov20at1530 = dhakaTime(2026, 11, 20, 15, 30)
 
-    private fun unitPrice(selection: ItemSelection) =
-        priceOrder(listOf(OrderLine(selection, 1)), appendixA, null, nov20at1530).lines.single().unitPrice
-
     @Test
     fun `TC-05 unit prices of X Y Z`() {
-        assertEquals(bdt(410), unitPrice(latteX))
-        assertEquals(bdt(310), unitPrice(americanoY))
-        assertEquals(bdt(180), unitPrice(icedTeaZ))
+        assertEquals(bdt(410), unitPrice(latteX, appendixA))
+        assertEquals(bdt(310), unitPrice(americanoY, appendixA))
+        assertEquals(bdt(180), unitPrice(icedTeaZ, appendixA))
     }
 
     @Test
