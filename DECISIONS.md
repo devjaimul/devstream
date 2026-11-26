@@ -38,7 +38,27 @@ Both are created and saved before the terminal is touched. When the cashier taps
 
 Every order keeps the prices it was sold at. When a sale is saved I store the catalog version and the whole breakdown with it (each line's label, unit price and total, P1, P2, discount, VAT, payable). Sync sends exactly those numbers and the receipt prints them, so if Latte goes to 240 while 3 orders are unsynced, those 3 still say 220. That's what the customer paid and what the payments cover. The new catalog only applies from the next cart (an open, unpaid cart just shows the new price), and the server can check old orders against their `catalogVersion`.
 
+## D2. Order states
+
+One `status` field: `PAYING → PENDING → SYNCED`, plus `FAILED` and `CANCELLED`, so a mix like "unpaid but synced" can't exist. PAYING is saved when the cashier taps Pay (D3), already with its receipt number, and the cashier sees the payment screen ("Waiting for card", "Declined, use another tender" or "Card result unknown"). When approved payments cover the payable it turns PENDING in the same transaction, and only then does the cashier see "Done"; the list shows "Not synced", and once uploaded it's SYNCED with the server's order number. The 5th failed upload makes it FAILED, shown in red with the error and a Retry that puts it back to PENDING with the count at 0. CANCELLED is only allowed from PAYING with no money taken and no card result still open; the row stays in the list greyed out, never synced and not counted in the summary.
+
 ## D6. Room schema and JSON shapes
+
+Room: three tables, money in poisha, times as server epoch ms. `order_lines` and `payments` are real tables because the summary sums them in SQL; small maps nobody queries inside (a line's options, an order's promotions) are JSON text. The autoincrement `id` is the creation order sync uses, and the receipt seq is `MAX(receiptSeq) + 1` for that day, read in the same transaction as the insert, with a unique index on (businessDay, receiptSeq) as a backstop. Nothing is ever deleted, so a number can't come back.
+
+```
+orders       id PK autoincrement, clientOrderId UNIQUE, receiptNo, businessDay, receiptSeq,
+             UNIQUE(businessDay, receiptSeq), createdAt, timeConfirmed, catalogVersion,
+             coupon, couponRejection, subtotal, promotions {"P1":12000,"P2":8200},
+             discountId, discountAmount, vat, total, payable,
+             status, syncAttempts, lastError, serverOrderNo
+order_lines  id PK, orderId FK, productId, sizeId, options {"oat":1,"extra_shot":1},
+             label, category, quantity, unitPrice, total
+payments     id PK, orderId FK, type CASH|CARD, status PENDING|APPROVED|DECLINED|UNKNOWN|VOIDED,
+             amount, tendered, change, cardRef UNIQUE, authCode, declineReason
+```
+
+Cash rows are written APPROVED straight away. The generated schema is in `app/schemas/`.
 
 JSON: all money is integer poisha and the field names say so (`unitPricePoisha`), so nothing gets parsed or rounded on the way. Times are ISO-8601 UTC strings and `businessDay` is the Dhaka date as `yyyy-MM-dd`. `postOrder` carries the whole order (ids, receipt number, catalog version, what was picked, the breakdown and the payments) so the server can audit it and rebuild the day. Catalog rules, promotions and discounts use a `type` field.
 
